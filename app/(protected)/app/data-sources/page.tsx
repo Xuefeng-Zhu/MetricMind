@@ -1,255 +1,191 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { useAuthStore } from "@/stores/auth-store";
+import { dataSources, datasets, schemaColumns, connectorRoadmap } from "@/lib/mock-data/data-sources";
+import type { Dataset, SchemaColumn as SchemaColumnType } from "@/lib/mock-data/types";
+import { DataTable } from "@/components/data-table/data-table";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
-} from "@/components/ui/card";
+import { FileText, Database, Cloud, Upload } from "lucide-react";
 
-interface DataSource {
-  id: string;
-  workspace_id: string;
-  name: string;
-  type: "csv" | "demo";
-  status: "processing" | "ready" | "error";
-  row_count: number | null;
-  file_size_bytes: number | null;
-  created_at: string;
+const sourceIcons: Record<string, React.ReactNode> = {
+  "file-text": <FileText className="h-8 w-8 text-[#4B5563]" />,
+  database: <Database className="h-8 w-8 text-[#4B5563]" />,
+  cloud: <Cloud className="h-8 w-8 text-[#4B5563]" />,
+};
+
+function getStatusBadge(status: string) {
+  switch (status) {
+    case "Active":
+      return <Badge variant="success">{status}</Badge>;
+    case "Demo":
+      return <Badge className="bg-blue-500 text-white">{status}</Badge>;
+    case "Coming Soon":
+      return <Badge variant="secondary">{status}</Badge>;
+    default:
+      return <Badge variant="outline">{status}</Badge>;
+  }
 }
 
+const datasetColumns: {
+  key: keyof Dataset;
+  label: string;
+  render?: (value: Dataset[keyof Dataset], row: Dataset) => React.ReactNode;
+}[] = [
+  { key: "name", label: "Name" },
+  {
+    key: "rows",
+    label: "Rows",
+    render: (value) => (value as number).toLocaleString(),
+  },
+  { key: "columns", label: "Columns" },
+  {
+    key: "qualityScore",
+    label: "Quality",
+    render: (value) => (
+      <div className="flex items-center gap-2">
+        <Progress value={value as number} color="#16A34A" className="w-24" />
+        <span className="text-xs text-[#4B5563]">{value as number}%</span>
+      </div>
+    ),
+  },
+  {
+    key: "semanticCoverage",
+    label: "Semantic Coverage",
+    render: (value) => (
+      <div className="flex items-center gap-2">
+        <Progress value={value as number} color="#2563EB" className="w-24" />
+        <span className="text-xs text-[#4B5563]">{value as number}%</span>
+      </div>
+    ),
+  },
+  { key: "lastUpdated", label: "Last Updated" },
+];
+
+const schemaTableColumns: {
+  key: keyof SchemaColumnType;
+  label: string;
+  render?: (value: SchemaColumnType[keyof SchemaColumnType], row: SchemaColumnType) => React.ReactNode;
+}[] = [
+  { key: "name", label: "Column Name" },
+  {
+    key: "inferredType",
+    label: "Inferred Type",
+    render: (value) => (
+      <Badge variant="outline" className="capitalize">
+        {value as string}
+      </Badge>
+    ),
+  },
+  {
+    key: "semanticType",
+    label: "Semantic Type",
+    render: (value) => {
+      const v = value as string;
+      const variant =
+        v === "measure"
+          ? "default"
+          : v === "dimension"
+            ? "secondary"
+            : "warning";
+      return (
+        <Badge variant={variant} className="capitalize">
+          {v}
+        </Badge>
+      );
+    },
+  },
+];
+
 export default function DataSourcesPage() {
-  const { workspaceContext } = useAuthStore();
-  const [dataSources, setDataSources] = useState<DataSource[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (workspaceContext?.workspaceId) {
-      loadDataSources();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspaceContext?.workspaceId]);
-
-  async function loadDataSources() {
-    if (!workspaceContext?.workspaceId) return;
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch("/api/data-sources", {
-        headers: {
-          "x-workspace-id": workspaceContext.workspaceId,
-        },
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || "Failed to load data sources");
-      }
-
-      const data = await response.json();
-      setDataSources(data.dataSources);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load data sources"
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  async function handleUpload() {
-    if (!workspaceContext?.workspaceId) return;
-
-    const file = fileInputRef.current?.files?.[0];
-    if (!file) {
-      setUploadError("Please select a CSV file to upload.");
-      return;
-    }
-
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-      setUploadError("Only CSV files are supported.");
-      return;
-    }
-
-    setIsUploading(true);
-    setUploadError(null);
-    setUploadSuccess(null);
-
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch("/api/data-sources", {
-        method: "POST",
-        headers: {
-          "x-workspace-id": workspaceContext.workspaceId,
-        },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.message || "Failed to upload file");
-      }
-
-      const data = await response.json();
-      setDataSources((prev) => [data.dataSource, ...prev]);
-      setUploadSuccess(
-        `Successfully uploaded "${data.dataSource.name}" (${data.dataSource.row_count} rows)`
-      );
-
-      // Reset file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    } catch (err) {
-      setUploadError(
-        err instanceof Error ? err.message : "Failed to upload file"
-      );
-    } finally {
-      setIsUploading(false);
-    }
-  }
-
-  function formatFileSize(bytes: number | null): string {
-    if (bytes === null) return "—";
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  }
-
-  function getStatusBadge(status: DataSource["status"]) {
-    switch (status) {
-      case "ready":
-        return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-            Ready
-          </span>
-        );
-      case "processing":
-        return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">
-            Processing
-          </span>
-        );
-      case "error":
-        return (
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
-            Error
-          </span>
-        );
-    }
-  }
-
-  if (!workspaceContext?.workspaceId) {
-    return (
-      <main className="flex min-h-screen flex-col p-8 max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-4">Data Sources</h1>
-        <p className="text-muted-foreground">
-          Please select a workspace first.
-        </p>
-      </main>
-    );
-  }
-
   return (
-    <main className="flex min-h-screen flex-col p-8 max-w-4xl mx-auto">
-      <h1 className="text-3xl font-bold mb-8">Data Sources</h1>
+    <div className="space-y-8">
+      <h1 className="text-2xl font-bold text-[#111827]">Data Sources</h1>
 
-      {/* Upload CSV Card */}
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Upload CSV</CardTitle>
-          <CardDescription>
-            Upload a CSV file to create a new data source. Maximum file size is
-            50MB.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            <Label htmlFor="csv-file">CSV File</Label>
-            <Input
-              id="csv-file"
-              type="file"
-              accept=".csv"
-              ref={fileInputRef}
-              aria-describedby={uploadError ? "upload-error" : undefined}
-            />
-          </div>
-          {uploadError && (
-            <p
-              id="upload-error"
-              className="mt-2 text-sm text-destructive"
+      {/* Source Cards */}
+      <section aria-label="Connected data sources">
+        <div className="grid grid-cols-3 gap-4">
+          {dataSources.map((source) => (
+            <div
+              key={source.id}
+              className="bg-white rounded-xl border border-[#E5E7EB] p-6 flex items-center gap-4"
             >
-              {uploadError}
-            </p>
-          )}
-          {uploadSuccess && (
-            <p className="mt-2 text-sm text-green-600">{uploadSuccess}</p>
-          )}
-        </CardContent>
-        <CardFooter>
-          <Button onClick={handleUpload} disabled={isUploading}>
-            {isUploading ? "Uploading..." : "Upload"}
-          </Button>
-        </CardFooter>
-      </Card>
-
-      {/* Error Display */}
-      {error && (
-        <div className="mb-4 p-4 rounded-md bg-destructive/10 text-destructive text-sm">
-          {error}
-        </div>
-      )}
-
-      {/* Data Source List */}
-      {isLoading ? (
-        <p className="text-muted-foreground">Loading data sources...</p>
-      ) : dataSources.length === 0 ? (
-        <p className="text-muted-foreground">
-          No data sources yet. Upload a CSV file above to get started.
-        </p>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {dataSources.map((ds) => (
-            <Card key={ds.id}>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">{ds.name}</CardTitle>
-                  {getStatusBadge(ds.status)}
-                </div>
-                <CardDescription>
-                  {ds.type === "demo" ? "Demo dataset" : "CSV upload"} •{" "}
-                  {ds.row_count !== null
-                    ? `${ds.row_count.toLocaleString()} rows`
-                    : "—"}{" "}
-                  • {formatFileSize(ds.file_size_bytes)}
-                </CardDescription>
-              </CardHeader>
-              <CardFooter>
-                <a href={`/app/data-sources/${ds.id}`}>
-                  <Button variant="outline" size="sm">
-                    View Details
-                  </Button>
-                </a>
-              </CardFooter>
-            </Card>
+              {sourceIcons[source.icon]}
+              <div className="flex-1">
+                <p className="font-medium text-[#111827]">{source.name}</p>
+              </div>
+              {getStatusBadge(source.status)}
+            </div>
           ))}
         </div>
-      )}
-    </main>
+      </section>
+
+      {/* Upload CSV Panel */}
+      <section aria-label="Upload CSV">
+        <h2 className="text-lg font-semibold text-[#111827] mb-4">Upload CSV</h2>
+        <div className="border-2 border-dashed border-[#E5E7EB] rounded-xl p-8 text-center">
+          <div className="flex flex-col items-center gap-3">
+            <Upload className="h-10 w-10 text-[#9CA3AF]" />
+            <p className="text-[#4B5563] font-medium">
+              Drag &amp; drop or click to upload
+            </p>
+            <Button variant="default">Browse Files</Button>
+            <p className="text-xs text-[#9CA3AF]">
+              Accepted formats: .csv, .tsv, .xlsx
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Dataset Catalog */}
+      <section aria-label="Dataset catalog">
+        <h2 className="text-lg font-semibold text-[#111827] mb-4">
+          Dataset Catalog
+        </h2>
+        <div className="bg-white rounded-xl border border-[#E5E7EB] overflow-hidden">
+          <DataTable
+            columns={datasetColumns}
+            data={datasets}
+            caption="Dataset catalog showing all uploaded datasets with quality and coverage metrics"
+          />
+        </div>
+      </section>
+
+      {/* Schema Inference */}
+      <section aria-label="Schema inference">
+        <h2 className="text-lg font-semibold text-[#111827] mb-4">
+          Schema Inference
+        </h2>
+        <div className="bg-white rounded-xl border border-[#E5E7EB] overflow-hidden">
+          <DataTable
+            columns={schemaTableColumns}
+            data={schemaColumns}
+            caption="Schema inference showing detected column names, inferred types, and semantic classifications"
+          />
+        </div>
+      </section>
+
+      {/* Connector Roadmap */}
+      <section aria-label="Connector roadmap">
+        <h2 className="text-lg font-semibold text-[#111827] mb-4">
+          Connector Roadmap
+        </h2>
+        <div className="bg-white rounded-xl border border-[#E5E7EB] p-6">
+          <ul className="space-y-3">
+            {connectorRoadmap.map((connector) => (
+              <li
+                key={connector.name}
+                className="flex items-center justify-between"
+              >
+                <span className="font-medium text-[#111827]">
+                  {connector.name}
+                </span>
+                <Badge variant="outline">{connector.quarter}</Badge>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+    </div>
   );
 }
