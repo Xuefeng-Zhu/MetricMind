@@ -51,6 +51,21 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar))",
+        },
+        success: {
+          DEFAULT: "hsl(var(--success))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+        },
+        danger: {
+          DEFAULT: "hsl(var(--danger))",
+        },
+        purple: {
+          DEFAULT: "hsl(var(--purple))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

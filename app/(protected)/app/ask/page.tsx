@@ -1,312 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useAuthStore } from "@/stores/auth-store";
-import { useConversationStore } from "@/stores/conversation-store";
+import { useState } from "react";
+import { conversations, mockAnswer } from "@/lib/mock-data/conversations";
+import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-} from "@/components/ui/card";
-import { SaveToDashboard } from "@/components/SaveToDashboard";
-
-interface Citation {
-  type: "metric" | "entity" | "data_source";
-  name: string;
-  id: string;
-}
-
-interface ChartRecommendation {
-  type: "line" | "bar" | "pie" | "kpi" | "table" | "area" | "scatter";
-  reason: string;
-  axes: { x?: string; y?: string; series?: string };
-}
-
-interface QueryResult {
-  sql: string;
-  results: Record<string, unknown>[];
-  rowCount: number;
-  executionTimeMs: number;
-  confidence: number;
-  citations: Citation[];
-  assumptions: string[];
-  chartRecommendation: ChartRecommendation;
-}
-
-export default function AskPage() {
-  const { workspaceContext } = useAuthStore();
-  const { conversations, isLoadingConversations, fetchConversations } =
-    useConversationStore();
-  const [question, setQuestion] = useState("");
-  const [lastAskedQuestion, setLastAskedQuestion] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<QueryResult | null>(null);
-  const [showSqlTrace, setShowSqlTrace] = useState(false);
-
-  useEffect(() => {
-    if (workspaceContext?.workspaceId) {
-      fetchConversations(workspaceContext.workspaceId);
-    }
-  }, [workspaceContext?.workspaceId, fetchConversations]);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-
-    if (!workspaceContext?.workspaceId || !question.trim()) return;
-
-    setIsLoading(true);
-    setError(null);
-    setResult(null);
-    setLastAskedQuestion(question.trim());
-
-    try {
-      const response = await fetch("/api/ask", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-workspace-id": workspaceContext.workspaceId,
-        },
-        body: JSON.stringify({ question: question.trim() }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Failed to process question");
-      }
-
-      setResult(data.data);
-      // Refresh conversation list after asking a question (new conversation may have been created)
-      fetchConversations(workspaceContext.workspaceId);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "An unexpected error occurred"
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  if (!workspaceContext?.workspaceId) {
-    return (
-      <main className="flex min-h-screen flex-col p-8 max-w-5xl mx-auto">
-        <h1 className="text-3xl font-bold mb-4">Ask</h1>
-        <p className="text-muted-foreground">
-          Please select a workspace first.
-        </p>
-      </main>
-    );
-  }
-
-  return (
-    <main className="flex min-h-screen flex-col p-8 max-w-7xl mx-auto">
-      <div className="flex gap-8">
-        {/* Main Content */}
-        <div className="flex-1 max-w-4xl">
-          <h1 className="text-3xl font-bold mb-2">Ask your data</h1>
-          <p className="text-muted-foreground mb-8">
-            Ask a natural-language question about your data and get AI-powered
-            insights.
-          </p>
-
-          {/* Question Input */}
-          <form onSubmit={handleSubmit} className="mb-8">
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <Label htmlFor="question" className="sr-only">
-                  Your question
-                </Label>
-                <Input
-                  id="question"
-                  type="text"
-                  placeholder="e.g., What is the monthly recurring revenue for the last 6 months?"
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
-                  disabled={isLoading}
-                  aria-describedby={error ? "ask-error" : undefined}
-                />
-              </div>
-              <Button type="submit" disabled={isLoading || !question.trim()}>
-                {isLoading ? "Thinking..." : "Ask"}
-              </Button>
-            </div>
-          </form>
-
-          {/* Error Display */}
-          {error && (
-            <div
-              id="ask-error"
-              className="mb-6 p-4 rounded-md bg-destructive/10 text-destructive text-sm"
-              role="alert"
-            >
-              {error}
-            </div>
-          )}
-
-          {/* Results */}
-          {result && (
-            <div className="space-y-6">
-              {/* Confidence Score + Save Button */}
-              <div className="flex items-center justify-between gap-4">
-                <ConfidenceIndicator confidence={result.confidence} />
-                <SaveToDashboard
-                  question={lastAskedQuestion}
-                  sql={result.sql}
-                  resultData={result.results}
-                  chartConfig={
-                    result.chartRecommendation
-                      ? (result.chartRecommendation as unknown as Record<string, unknown>)
-                      : {}
-                  }
-                  summary={`Query returned ${result.rowCount} rows in ${result.executionTimeMs}ms`}
-                  citations={result.citations}
-                  confidence={result.confidence}
-                  assumptions={result.assumptions}
-                />
-              </div>
-
-              {/* Results Table */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Results</CardTitle>
-                  <CardDescription>
-                    {result.rowCount} row{result.rowCount !== 1 ? "s" : ""}{" "}
-                    returned in {result.executionTimeMs}ms
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <ResultsTable results={result.results} />
-                </CardContent>
-              </Card>
-
-              {/* SQL Trace (Collapsible) */}
-              <Card>
-                <CardHeader>
-                  <button
-                    type="button"
-                    className="flex items-center gap-2 w-full text-left"
-                    onClick={() => setShowSqlTrace(!showSqlTrace)}
-                    aria-expanded={showSqlTrace}
-                    aria-controls="sql-trace-content"
-                  >
-                    <span className="text-lg font-semibold">SQL Trace</span>
-                    <span className="text-muted-foreground text-sm">
-                      {showSqlTrace ? "▼" : "▶"}
-                    </span>
-                  </button>
-                </CardHeader>
-                {showSqlTrace && (
-                  <CardContent id="sql-trace-content">
-                    <pre className="bg-muted p-4 rounded-md overflow-x-auto text-sm font-mono whitespace-pre-wrap">
-                      {result.sql}
-                    </pre>
-                  </CardContent>
-                )}
-              </Card>
-
-              {/* Citations */}
-              {result.citations.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Citations</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex flex-wrap gap-2">
-                      {result.citations.map((citation, index) => (
-                        <CitationBadge key={index} citation={citation} />
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Assumptions */}
-              {result.assumptions.length > 0 && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Assumptions</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-                      {result.assumptions.map((assumption, index) => (
-                        <li key={index}>{assumption}</li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Conversation List Sidebar */}
-        <aside className="w-72 shrink-0">
-          <ConversationList
-            conversations={conversations}
-            isLoading={isLoadingConversations}
-          />
-        </aside>
-      </div>
-    </main>
-  );
-}
-
-// --- Sub-components ---
-
-interface ConversationListItem {
-  id: string;
-  title: string;
-  updated_at: string;
-}
-
-function ConversationList({
-  conversations,
-  isLoading,
-}: {
-  conversations: ConversationListItem[];
-  isLoading: boolean;
-}) {
-  return (
-    <div>
-      <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-3">
-        Past Conversations
-      </h2>
-      {isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading...</p>
-      ) : conversations.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No conversations yet. Ask a question to start one.
-        </p>
-      ) : (
-        <nav aria-label="Past conversations">
-          <ul className="space-y-1">
-            {conversations.map((conversation) => (
-              <li key={conversation.id}>
-                <a
-                  href={`/app/ask/${conversation.id}`}
-                  className="block p-3 rounded-md hover:bg-muted transition-colors"
-                >
-                  <span className="block text-sm font-medium truncate">
-                    {conversation.title}
-                  </span>
-                  <span className="block text-xs text-muted-foreground mt-0.5">
-                    {formatRelativeTime(conversation.updated_at)}
-                  </span>
-                </a>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      )}
-    </div>
-  );
-}
+import { Send, Plus, ChevronDown, ChevronRight, MessageSquare } from "lucide-react";
 
 function formatRelativeTime(dateString: string): string {
   const date = new Date(dateString);
@@ -318,123 +17,271 @@ function formatRelativeTime(dateString: string): string {
   const diffDays = Math.floor(diffHours / 24);
 
   if (diffSeconds < 60) return "Just now";
-  if (diffMinutes < 60)
-    return `${diffMinutes} minute${diffMinutes !== 1 ? "s" : ""} ago`;
-  if (diffHours < 24)
-    return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
-  if (diffDays < 7)
-    return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
-
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
   return date.toLocaleDateString();
 }
 
-function ConfidenceIndicator({ confidence }: { confidence: number }) {
-  const isLow = confidence < 0.7;
-  const percentage = Math.round(confidence * 100);
+export default function AskPage() {
+  const [activeConversation, setActiveConversation] = useState(conversations[0].id);
+  const [question, setQuestion] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [showAnswer, setShowAnswer] = useState(true);
+  const [sqlExpanded, setSqlExpanded] = useState(false);
 
-  return (
-    <div
-      className={`flex items-center gap-3 p-3 rounded-md ${
-        isLow
-          ? "bg-yellow-50 border border-yellow-200"
-          : "bg-green-50 border border-green-200"
-      }`}
-      role={isLow ? "alert" : undefined}
-    >
-      <div
-        className={`text-sm font-medium ${
-          isLow ? "text-yellow-800" : "text-green-800"
-        }`}
-      >
-        Confidence: {percentage}%
-      </div>
-      {isLow && (
-        <span className="text-xs text-yellow-700">
-          ⚠️ Low confidence — results may be inaccurate. Consider rephrasing
-          your question or verifying the data.
-        </span>
-      )}
-    </div>
-  );
-}
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!question.trim()) return;
 
-function ResultsTable({ results }: { results: Record<string, unknown>[] }) {
-  if (results.length === 0) {
-    return (
-      <p className="text-muted-foreground text-sm">No results returned.</p>
-    );
+    setIsLoading(true);
+    setShowAnswer(false);
+
+    setTimeout(() => {
+      setIsLoading(false);
+      setShowAnswer(true);
+      setQuestion("");
+    }, 800);
   }
 
-  const columns = Object.keys(results[0]);
+  function handleNextQuestion(q: string) {
+    setQuestion(q);
+  }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm border-collapse">
-        <thead>
-          <tr className="border-b">
-            {columns.map((col) => (
-              <th
-                key={col}
-                className="text-left p-2 font-medium text-muted-foreground"
-              >
-                {col}
-              </th>
+    <div className="flex h-[calc(100vh-theme(spacing.16)-theme(spacing.12))]">
+      {/* Left Sidebar - Conversation List */}
+      <aside className="w-72 bg-white border-r border-[#E5E7EB] flex flex-col shrink-0" aria-label="Conversation history">
+        <div className="p-4 border-b border-[#E5E7EB]">
+          <Button className="w-full" size="sm" aria-label="Start new conversation">
+            <Plus className="h-4 w-4 mr-2" />
+            New Conversation
+          </Button>
+        </div>
+        <nav className="flex-1 overflow-y-auto p-2" aria-label="Past conversations">
+          <ul className="space-y-1">
+            {conversations.map((conv) => (
+              <li key={conv.id}>
+                <button
+                  type="button"
+                  onClick={() => setActiveConversation(conv.id)}
+                  className={`w-full text-left p-3 rounded-lg transition-colors ${
+                    activeConversation === conv.id
+                      ? "bg-[#F0F7FF] border border-blue-200"
+                      : "hover:bg-gray-50"
+                  }`}
+                  aria-current={activeConversation === conv.id ? "true" : undefined}
+                >
+                  <div className="flex items-start gap-2">
+                    <MessageSquare className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-[#111827] truncate">
+                        {conv.title}
+                      </p>
+                      <p className="text-xs text-[#4B5563] truncate mt-0.5">
+                        {conv.lastMessage}
+                      </p>
+                      <p className="text-xs text-[#4B5563] mt-1">
+                        {formatRelativeTime(conv.timestamp)}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              </li>
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {results.slice(0, 100).map((row, rowIndex) => (
-            <tr key={rowIndex} className="border-b last:border-0">
-              {columns.map((col) => (
-                <td key={col} className="p-2">
-                  {formatCellValue(row[col])}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {results.length > 100 && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Showing first 100 of {results.length} rows.
-        </p>
-      )}
+          </ul>
+        </nav>
+      </aside>
+
+      {/* Center Content */}
+      <div className="flex-1 flex flex-col min-w-0" role="region" aria-label="AI answer area">
+        <div className="flex-1 overflow-y-auto p-6">
+          {/* Loading Skeleton */}
+          {isLoading && (
+            <div className="space-y-4 animate-pulse">
+              <div className="h-6 bg-gray-200 rounded w-3/4" />
+              <div className="h-4 bg-gray-200 rounded w-1/4" />
+              <div className="h-24 bg-gray-200 rounded w-full mt-4" />
+              <div className="flex gap-4 mt-4">
+                <div className="h-20 bg-gray-200 rounded flex-1" />
+                <div className="h-20 bg-gray-200 rounded flex-1" />
+                <div className="h-20 bg-gray-200 rounded flex-1" />
+              </div>
+            </div>
+          )}
+
+          {/* Answer Display */}
+          {showAnswer && !isLoading && (
+            <div className="space-y-6">
+              {/* Question + Confidence */}
+              <div className="flex items-start justify-between gap-4">
+                <h1 className="text-xl font-semibold text-[#111827]">
+                  {mockAnswer.question}
+                </h1>
+                <Badge variant="success" className="shrink-0 whitespace-nowrap">
+                  {mockAnswer.confidence}% confidence
+                </Badge>
+              </div>
+
+              {/* AI Summary */}
+              <p className="text-sm text-[#4B5563] leading-relaxed">
+                {mockAnswer.summary}
+              </p>
+
+              {/* Metric Cards */}
+              <div className="grid grid-cols-3 gap-4">
+                {mockAnswer.metrics.map((metric) => (
+                  <div
+                    key={metric.label}
+                    className="bg-white border border-[#E5E7EB] rounded-xl p-4"
+                  >
+                    <p className="text-xs text-[#4B5563] font-medium uppercase tracking-wide">
+                      {metric.label}
+                    </p>
+                    <div className="flex items-baseline gap-2 mt-1">
+                      <span className="text-2xl font-bold text-[#111827]">
+                        {metric.value}
+                      </span>
+                      <span
+                        className={`text-xs font-medium ${
+                          metric.trend === "up" ? "text-red-600" : "text-green-600"
+                        }`}
+                      >
+                        {metric.trend === "up" ? "↑" : "↓"}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Churn by Activation Cohort Chart */}
+              <section>
+                <h2 className="text-sm font-semibold text-[#111827] mb-3">
+                  Churn by Activation Cohort
+                </h2>
+                <div className="bg-white border border-[#E5E7EB] rounded-xl p-4">
+                  <SimpleBarChart
+                    data={mockAnswer.chartData}
+                    xKey="cohort"
+                    yKeys={["churnRate"]}
+                    colors={["#2563EB"]}
+                    height={250}
+                    aria-label="Bar chart showing churn rate by activation cohort from January to June 2024"
+                  />
+                </div>
+              </section>
+
+              {/* Generated SQL (Collapsible) */}
+              <section>
+                <button
+                  type="button"
+                  onClick={() => setSqlExpanded(!sqlExpanded)}
+                  className="flex items-center gap-2 text-sm font-semibold text-[#111827] hover:text-[#2563EB] transition-colors"
+                  aria-expanded={sqlExpanded}
+                  aria-controls="generated-sql-panel"
+                >
+                  {sqlExpanded ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                  Generated SQL
+                </button>
+                {sqlExpanded && (
+                  <div
+                    id="generated-sql-panel"
+                    className="mt-3 bg-[#1E293B] rounded-xl p-4 overflow-x-auto"
+                  >
+                    <pre className="text-sm font-mono text-gray-200 whitespace-pre-wrap">
+                      {mockAnswer.sql}
+                    </pre>
+                  </div>
+                )}
+              </section>
+            </div>
+          )}
+        </div>
+
+        {/* Sticky Chat Input Bar */}
+        <div className="border-t border-[#E5E7EB] bg-white p-4 shrink-0">
+          <form onSubmit={handleSubmit} className="flex items-center gap-3">
+            <label htmlFor="ask-input" className="sr-only">
+              Ask a question about your data
+            </label>
+            <input
+              id="ask-input"
+              type="text"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              placeholder="Ask a question about your data..."
+              className="flex-1 h-10 px-4 rounded-lg border border-[#E5E7EB] bg-[#F6F8FB] text-sm text-[#111827] placeholder:text-[#4B5563] focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
+              disabled={isLoading}
+            />
+            <Button
+              type="submit"
+              size="icon"
+              disabled={isLoading || !question.trim()}
+              aria-label="Send question"
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          </form>
+        </div>
+      </div>
+
+      {/* Right Panel */}
+      <aside className="w-80 bg-white border-l border-[#E5E7EB] flex flex-col shrink-0 overflow-y-auto" aria-label="Answer details">
+        {/* Citations */}
+        <section className="p-4 border-b border-[#E5E7EB]">
+          <h2 className="text-sm font-semibold text-[#111827] mb-3">Citations</h2>
+          <ul className="space-y-2">
+            {mockAnswer.citations.map((citation, index) => (
+              <li key={index}>
+                <a
+                  href={citation.source}
+                  className="flex items-center gap-2 text-sm text-[#2563EB] hover:underline"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] shrink-0" />
+                  {citation.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* Next Questions */}
+        <section className="p-4 border-b border-[#E5E7EB]">
+          <h2 className="text-sm font-semibold text-[#111827] mb-3">Next Questions</h2>
+          <ul className="space-y-2">
+            {mockAnswer.nextQuestions.map((q, index) => (
+              <li key={index}>
+                <button
+                  type="button"
+                  onClick={() => handleNextQuestion(q)}
+                  className="w-full text-left text-sm text-[#4B5563] hover:text-[#2563EB] hover:bg-[#F0F7FF] p-2 rounded-md transition-colors"
+                >
+                  {q}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* Trace Steps */}
+        <section className="p-4">
+          <h2 className="text-sm font-semibold text-[#111827] mb-3">Trace Steps</h2>
+          <ol className="space-y-2">
+            {mockAnswer.traceSteps.map((step, index) => (
+              <li key={index} className="flex items-center gap-3 text-sm text-[#4B5563]">
+                <span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#F0F7FF] text-[#2563EB] text-xs font-semibold shrink-0">
+                  {index + 1}
+                </span>
+                {step}
+              </li>
+            ))}
+          </ol>
+        </section>
+      </aside>
     </div>
   );
-}
-
-function CitationBadge({ citation }: { citation: Citation }) {
-  const typeColors: Record<Citation["type"], string> = {
-    metric: "bg-blue-100 text-blue-800",
-    entity: "bg-purple-100 text-purple-800",
-    data_source: "bg-gray-100 text-gray-800",
-  };
-
-  const typeLabels: Record<Citation["type"], string> = {
-    metric: "Metric",
-    entity: "Entity",
-    data_source: "Data Source",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${
-        typeColors[citation.type]
-      }`}
-    >
-      <span className="opacity-70">{typeLabels[citation.type]}:</span>
-      {citation.name}
-    </span>
-  );
-}
-
-function formatCellValue(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "number") {
-    return Number.isInteger(value)
-      ? value.toLocaleString()
-      : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  }
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  return String(value);
 }
