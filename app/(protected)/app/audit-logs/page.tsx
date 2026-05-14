@@ -2,19 +2,104 @@
 
 import { useState, useMemo } from "react";
 import { Shield, Activity, Lock, EyeOff } from "lucide-react";
-import { auditKPIs } from "@/lib/mock-data/kpis";
-import { auditEvents, governanceControls } from "@/lib/mock-data/audit-events";
+import { useApiQuery } from "@/hooks/use-api-query";
+import type { AuditLogsResponse } from "@/types/api-responses";
+import { LoadingSkeleton, ErrorState } from "@/components/ui/api-states";
 import { KPICard } from "@/components/dashboard/kpi-card";
 import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
 import { DataTable } from "@/components/data-table/data-table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import type { LucideIcon } from "lucide-react";
-import type { AuditEvent } from "@/lib/mock-data/types";
+
+// ─── Local types for audit event display ─────────────────────────────────────
+
+interface AuditEventRow {
+  id: string;
+  created_at: string;
+  actor_id: string;
+  action: string;
+  target_type: string;
+  target_id: string;
+  metadata: Record<string, unknown>;
+}
+
+// ─── Static governance controls (no API endpoint available) ──────────────────
+
+interface GovernanceControl {
+  id: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+}
+
+const governanceControls: GovernanceControl[] = [
+  {
+    id: "gov-001",
+    label: "SQL Denylist Enforcement",
+    description:
+      "Block dangerous SQL patterns (DROP, TRUNCATE, DELETE without WHERE)",
+    enabled: true,
+  },
+  {
+    id: "gov-002",
+    label: "PII Column Masking",
+    description:
+      "Automatically mask personally identifiable information in query results",
+    enabled: true,
+  },
+  {
+    id: "gov-003",
+    label: "AI Trace Logging",
+    description:
+      "Log all AI-generated queries with full execution trace for audit",
+    enabled: true,
+  },
+  {
+    id: "gov-004",
+    label: "RLS Auto-Enforcement",
+    description:
+      "Automatically apply row-level security filters based on user context",
+    enabled: true,
+  },
+];
 
 // ─── Icon mapping for KPI cards ─────────────────────────────────────────────
 
 const kpiIcons: LucideIcon[] = [Shield, Activity, Lock, EyeOff];
+
+// ─── Static KPI data (derived from audit events summary — no separate API) ──
+
+const auditKPIs = [
+  {
+    id: "audit-blocked-sql",
+    label: "Blocked SQL",
+    value: "18",
+    trend: "down" as const,
+    trendValue: "-3",
+  },
+  {
+    id: "audit-ai-traces",
+    label: "AI Traces",
+    value: "6.2k",
+    trend: "up" as const,
+    trendValue: "+12.4%",
+  },
+  {
+    id: "audit-rls-checks",
+    label: "RLS Policy Checks",
+    value: "42k",
+    trend: "up" as const,
+    trendValue: "+5.8%",
+  },
+  {
+    id: "audit-pii-columns",
+    label: "PII Columns",
+    value: "12",
+    trend: "neutral" as const,
+    trendValue: "0",
+  },
+];
 
 // ─── Generate 30 days of deterministic AI safety data ────────────────────────
 
@@ -22,9 +107,8 @@ function generateSafetyData() {
   const data: { day: string; blocked: number; allowed: number }[] = [];
   for (let i = 0; i < 30; i++) {
     const day = `Apr ${(i + 1).toString().padStart(2, "0")}`;
-    // Deterministic values using simple formula
-    const blocked = ((i * 3 + 7) % 5) + 1; // 1-5 range
-    const allowed = ((i * 7 + 13) % 71) + 50; // 50-120 range
+    const blocked = ((i * 3 + 7) % 5) + 1;
+    const allowed = ((i * 7 + 13) % 71) + 50;
     data.push({ day, blocked, allowed });
   }
   return data;
@@ -77,6 +161,19 @@ function formatTimestamp(timestamp: string): string {
   });
 }
 
+// ─── Known action types for filter dropdown ──────────────────────────────────
+
+const knownActionTypes = [
+  "query_blocked",
+  "pii_access",
+  "metric_certified",
+  "config_changed",
+  "rls_check",
+  "trace_logged",
+  "user_login",
+  "export_data",
+];
+
 // ─── Main Page Component ─────────────────────────────────────────────────────
 
 export default function AuditLogsPage() {
@@ -93,29 +190,23 @@ export default function AuditLogsPage() {
   const [actionFilter, setActionFilter] = useState<string>("all");
   const [actorFilter, setActorFilter] = useState<string>("all");
 
-  // Get unique action types and actors for filter dropdowns
-  const actionTypes = useMemo(() => {
-    const types = new Set(auditEvents.map((e) => e.actionType));
-    return Array.from(types).sort();
-  }, []);
-
-  const actors = useMemo(() => {
-    const actorSet = new Set(auditEvents.map((e) => e.actor));
-    return Array.from(actorSet).sort();
-  }, []);
-
-  // Filter events
-  const filteredEvents = useMemo(() => {
-    return auditEvents.filter((event) => {
-      const matchesAction =
-        actionFilter === "all" || event.actionType === actionFilter;
-      const matchesActor =
-        actorFilter === "all" || event.actor === actorFilter;
-      return matchesAction && matchesActor;
+  // Fetch audit events with filter params — re-fetches when filters change
+  const { data, isLoading, error, refetch } =
+    useApiQuery<AuditLogsResponse>("/api/audit-logs", {
+      params: {
+        action: actionFilter !== "all" ? actionFilter : undefined,
+        actorId: actorFilter !== "all" ? actorFilter : undefined,
+      },
     });
-  }, [actionFilter, actorFilter]);
 
-  // Toggle handler
+  // Extract unique actors from fetched events for the actor filter dropdown
+  const actors = useMemo(() => {
+    if (!data?.events) return [];
+    const actorSet = new Set(data.events.map((e) => e.actor_id));
+    return Array.from(actorSet).sort();
+  }, [data]);
+
+  // Toggle handler for governance controls
   function handleToggle(controlId: string, label: string) {
     setToggleStates((prev) => {
       const newEnabled = !prev[controlId];
@@ -127,68 +218,81 @@ export default function AuditLogsPage() {
     });
   }
 
-  // Table columns
+  // Table columns for audit events
   const columns = [
     {
-      key: "timestamp" as keyof AuditEvent,
+      key: "created_at" as keyof AuditEventRow,
       label: "Timestamp",
-      render: (value: AuditEvent[keyof AuditEvent]) => (
+      render: (value: AuditEventRow[keyof AuditEventRow]) => (
         <span className="text-sm text-[#4B5563] whitespace-nowrap">
           {formatTimestamp(value as string)}
         </span>
       ),
     },
     {
-      key: "actor" as keyof AuditEvent,
+      key: "actor_id" as keyof AuditEventRow,
       label: "Actor",
-      render: (_value: AuditEvent[keyof AuditEvent], row: AuditEvent) => (
+      render: (value: AuditEventRow[keyof AuditEventRow]) => (
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-full bg-[#2563EB] text-white flex items-center justify-center text-xs font-medium shrink-0">
-            {row.actorAvatar}
+            {(value as string).slice(0, 2).toUpperCase()}
           </div>
           <span className="text-sm font-medium text-[#111827]">
-            {row.actor}
+            {value as string}
           </span>
         </div>
       ),
     },
     {
-      key: "actionType" as keyof AuditEvent,
+      key: "action" as keyof AuditEventRow,
       label: "Action",
-      render: (value: AuditEvent[keyof AuditEvent]) => (
+      render: (value: AuditEventRow[keyof AuditEventRow]) => (
         <Badge variant={getActionBadgeVariant(value as string)}>
           {formatActionLabel(value as string)}
         </Badge>
       ),
     },
     {
-      key: "target" as keyof AuditEvent,
+      key: "target_type" as keyof AuditEventRow,
       label: "Target",
-      render: (value: AuditEvent[keyof AuditEvent]) => (
+      render: (
+        _value: AuditEventRow[keyof AuditEventRow],
+        row: AuditEventRow
+      ) => (
         <span className="text-sm text-[#111827] max-w-[300px] truncate block">
-          {value as string}
+          {row.target_type}: {row.target_id}
         </span>
       ),
     },
-    {
-      key: "status" as keyof AuditEvent,
-      label: "Status",
-      render: (value: AuditEvent[keyof AuditEvent]) => {
-        const status = value as string;
-        const variant =
-          status === "blocked"
-            ? "danger"
-            : status === "warning"
-              ? "warning"
-              : "success";
-        return (
-          <Badge variant={variant}>
-            {status.charAt(0).toUpperCase() + status.slice(1)}
-          </Badge>
-        );
-      },
-    },
   ];
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-2xl font-bold text-[#111827]">
+            Audit Logs &amp; Governance
+          </h1>
+        </div>
+        <LoadingSkeleton lines={6} />
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-2xl font-bold text-[#111827]">
+            Audit Logs &amp; Governance
+          </h1>
+        </div>
+        <ErrorState message={error} onRetry={refetch} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -298,7 +402,7 @@ export default function AuditLogsPage() {
                 className="block h-9 w-48 rounded-md border border-[#E5E7EB] bg-white px-3 text-sm text-[#111827] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2"
               >
                 <option value="all">All Actions</option>
-                {actionTypes.map((type) => (
+                {knownActionTypes.map((type) => (
                   <option key={type} value={type}>
                     {formatActionLabel(type)}
                   </option>
@@ -332,7 +436,7 @@ export default function AuditLogsPage() {
           <div className="overflow-x-auto">
             <DataTable
               columns={columns}
-              data={filteredEvents}
+              data={(data?.events ?? []) as unknown as AuditEventRow[]}
               caption="Audit event log showing recent platform activity"
             />
           </div>

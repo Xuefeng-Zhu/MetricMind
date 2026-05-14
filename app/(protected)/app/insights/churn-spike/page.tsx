@@ -1,14 +1,45 @@
 "use client";
 
 import { useState } from "react";
-import { churnDrivers, atRiskAccounts } from "@/lib/mock-data/churn";
-import { revenueTimeSeries } from "@/lib/mock-data/revenue";
 import { SimpleLineChart } from "@/components/charts/simple-line-chart";
 import { DataTable } from "@/components/data-table/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useApiQuery } from "@/hooks/use-api-query";
+import { LoadingSkeleton } from "@/components/ui/api-states";
+import { ErrorState } from "@/components/ui/api-states";
+
+// Local types matching the API response shapes
+interface ChurnDriver {
+  name: string;
+  percentage: number;
+  value: number;
+}
+
+interface AtRiskAccount {
+  name: string;
+  mrr: number;
+  riskScore: number;
+  daysSinceEngagement: number;
+  status: 'critical' | 'warning' | 'monitoring';
+}
+
+interface RevenueDataPoint {
+  month: string;
+  mrr: number;
+  arr: number;
+  starter: number;
+  growth: number;
+  enterprise: number;
+}
+
+interface ChurnInsightResponse {
+  churnDrivers: ChurnDriver[];
+  atRiskAccounts: AtRiskAccount[];
+  revenueTimeSeries: RevenueDataPoint[];
+}
 
 const driverColors: Record<number, string> = {
   0: "#DC2626", // red for highest
@@ -37,6 +68,14 @@ export default function InsightDetailPage() {
   const { toast } = useToast();
   const [selectedMetric, setSelectedMetric] = useState("Churn Rate");
   const [threshold, setThreshold] = useState("5");
+
+  const { data, isLoading, error, refetch } = useApiQuery<ChurnInsightResponse>(
+    '/api/insights/churn-spike'
+  );
+
+  const churnDrivers = data?.churnDrivers ?? [];
+  const atRiskAccounts = data?.atRiskAccounts ?? [];
+  const revenueTimeSeries = data?.revenueTimeSeries ?? [];
 
   const handleCreateAlert = () => {
     toast({
@@ -90,72 +129,79 @@ export default function InsightDetailPage() {
           </h1>
         </header>
 
-        {/* Timeline Chart */}
-        <section aria-labelledby="timeline-heading">
-          <h2 id="timeline-heading" className="text-lg font-semibold text-[#111827] mb-4">
-            Timeline
-          </h2>
-          <div className="relative rounded-xl bg-white border border-[#E5E7EB] p-4">
-            {/* Anomaly highlight overlay */}
-            <div
-              className="absolute top-12 bottom-12 bg-red-50 border-l border-r border-red-200 opacity-60 pointer-events-none z-0"
-              style={{ left: "62%", right: "18%" }}
-              aria-hidden="true"
-            />
-            <div className="relative z-10">
-              <SimpleLineChart
-                data={revenueTimeSeries as unknown as Record<string, unknown>[]}
-                xKey="month"
-                yKey="enterprise"
-                color="#DC2626"
-                height={260}
-                aria-label="Enterprise churn timeline showing anomaly spike in recent months"
-              />
-            </div>
-            <p className="text-xs text-[#4B5563] mt-2">
-              Shaded region indicates anomaly period (Sep–Nov 2024)
-            </p>
-          </div>
-        </section>
+        {isLoading && <LoadingSkeleton lines={12} />}
+        {error && <ErrorState message={error} onRetry={refetch} />}
 
-        {/* Key Drivers */}
-        <section aria-labelledby="drivers-heading">
-          <h2 id="drivers-heading" className="text-lg font-semibold text-[#111827] mb-4">
-            Key Drivers
-          </h2>
-          <div className="rounded-xl bg-white border border-[#E5E7EB] p-6 space-y-5">
-            {churnDrivers.map((driver, index) => (
-              <div key={driver.name} className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-[#111827]">
-                    {driver.name}
-                  </span>
-                  <span className="text-sm font-semibold text-[#4B5563]">
-                    {driver.percentage}%
-                  </span>
+        {!isLoading && !error && (
+          <>
+            {/* Timeline Chart */}
+            <section aria-labelledby="timeline-heading">
+              <h2 id="timeline-heading" className="text-lg font-semibold text-[#111827] mb-4">
+                Timeline
+              </h2>
+              <div className="relative rounded-xl bg-white border border-[#E5E7EB] p-4">
+                {/* Anomaly highlight overlay */}
+                <div
+                  className="absolute top-12 bottom-12 bg-red-50 border-l border-r border-red-200 opacity-60 pointer-events-none z-0"
+                  style={{ left: "62%", right: "18%" }}
+                  aria-hidden="true"
+                />
+                <div className="relative z-10">
+                  <SimpleLineChart
+                    data={revenueTimeSeries as unknown as Record<string, unknown>[]}
+                    xKey="month"
+                    yKey="enterprise"
+                    color="#DC2626"
+                    height={260}
+                    aria-label="Enterprise churn timeline showing anomaly spike in recent months"
+                  />
                 </div>
-                <Progress
-                  value={driver.percentage}
-                  color={driverColors[index]}
+                <p className="text-xs text-[#4B5563] mt-2">
+                  Shaded region indicates anomaly period (Sep–Nov 2024)
+                </p>
+              </div>
+            </section>
+
+            {/* Key Drivers */}
+            <section aria-labelledby="drivers-heading">
+              <h2 id="drivers-heading" className="text-lg font-semibold text-[#111827] mb-4">
+                Key Drivers
+              </h2>
+              <div className="rounded-xl bg-white border border-[#E5E7EB] p-6 space-y-5">
+                {churnDrivers.map((driver, index) => (
+                  <div key={driver.name} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-[#111827]">
+                        {driver.name}
+                      </span>
+                      <span className="text-sm font-semibold text-[#4B5563]">
+                        {driver.percentage}%
+                      </span>
+                    </div>
+                    <Progress
+                      value={driver.percentage}
+                      color={driverColors[index]}
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            {/* Accounts Needing Action */}
+            <section aria-labelledby="accounts-heading">
+              <h2 id="accounts-heading" className="text-lg font-semibold text-[#111827] mb-4">
+                Accounts Needing Action
+              </h2>
+              <div className="rounded-xl bg-white border border-[#E5E7EB] overflow-hidden">
+                <DataTable
+                  columns={accountColumns}
+                  data={atRiskAccounts}
+                  caption="At-risk accounts requiring immediate attention"
                 />
               </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Accounts Needing Action */}
-        <section aria-labelledby="accounts-heading">
-          <h2 id="accounts-heading" className="text-lg font-semibold text-[#111827] mb-4">
-            Accounts Needing Action
-          </h2>
-          <div className="rounded-xl bg-white border border-[#E5E7EB] overflow-hidden">
-            <DataTable
-              columns={accountColumns}
-              data={atRiskAccounts}
-              caption="At-risk accounts requiring immediate attention"
-            />
-          </div>
-        </section>
+            </section>
+          </>
+        )}
       </div>
 
       {/* Right Panel */}

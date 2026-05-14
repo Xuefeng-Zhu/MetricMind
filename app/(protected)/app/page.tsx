@@ -1,13 +1,9 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { homeKPIs } from '@/lib/mock-data/kpis';
-import { revenueTimeSeries } from '@/lib/mock-data/revenue';
-import {
-  recentMetrics,
-  trustHealth,
-  suggestedQuestions,
-} from '@/lib/mock-data/dashboards';
+import { useApiQuery } from '@/hooks/use-api-query';
+import type { DashboardInsightsResponse, MetricsResponse } from '@/types/api-responses';
+import { LoadingSkeleton, ErrorState } from '@/components/ui/api-states';
 import { KPICard } from '@/components/dashboard/kpi-card';
 import { SimpleLineChart } from '@/components/charts/simple-line-chart';
 import { DataTable } from '@/components/data-table/data-table';
@@ -15,19 +11,48 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
+const suggestedQuestions = [
+  'Why did churn increase in April?',
+  'MRR by plan',
+  'Top expansion accounts',
+  'Weekly active users',
+];
+
 export default function WorkspaceHomePage() {
   const router = useRouter();
 
-  const metricsColumns = [
-    { key: 'name' as const, label: 'Name' },
-    { key: 'owner' as const, label: 'Owner' },
-    { key: 'date' as const, label: 'Certified Date' },
+  // Fetch dashboard insights (KPIs, revenue, trust health)
+  const {
+    data: dashboardData,
+    isLoading: dashboardLoading,
+    error: dashboardError,
+    refetch: refetchDashboard,
+  } = useApiQuery<DashboardInsightsResponse>('/api/dashboards/home/insights');
+
+  // Fetch certified metrics
+  const {
+    data: metricsData,
+    isLoading: metricsLoading,
+    error: metricsError,
+    refetch: refetchMetrics,
+  } = useApiQuery<MetricsResponse>('/api/semantic/metrics');
+
+  type MetricRow = MetricsResponse['metrics'][number];
+
+  const metricsColumns: Array<{
+    key: keyof MetricRow;
+    label: string;
+    render?: (value: MetricRow[keyof MetricRow], row: MetricRow) => React.ReactNode;
+  }> = [
+    { key: 'name', label: 'Name' },
+    { key: 'owner', label: 'Owner' },
+    { key: 'certified_date', label: 'Certified Date' },
     {
-      key: 'status' as const,
+      key: 'certified',
       label: 'Status',
-      render: (value: string) => (
-        <Badge variant={value === 'certified' ? 'success' : value === 'pending' ? 'warning' : 'outline'}>
-          {value}
+      render: (value) => (
+        <Badge variant={value ? 'success' : 'outline'}>
+          {value ? 'certified' : 'pending'}
         </Badge>
       ),
     },
@@ -39,29 +64,41 @@ export default function WorkspaceHomePage() {
 
       {/* KPI Cards */}
       <section aria-label="Key performance indicators">
-        <div className="grid grid-cols-4 gap-4">
-          {homeKPIs.map((kpi) => (
-            <KPICard
-              key={kpi.id}
-              label={kpi.label}
-              value={kpi.value}
-              trend={kpi.trend}
-              trendValue={kpi.trendValue}
-            />
-          ))}
-        </div>
+        {dashboardLoading ? (
+          <LoadingSkeleton lines={3} />
+        ) : dashboardError ? (
+          <ErrorState message={dashboardError} onRetry={refetchDashboard} />
+        ) : (
+          <div className="grid grid-cols-4 gap-4">
+            {dashboardData?.kpis.map((kpi) => (
+              <KPICard
+                key={kpi.label}
+                label={kpi.label}
+                value={kpi.value}
+                trend={kpi.trend}
+                trendValue={kpi.trendValue}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Revenue Trend */}
       <section aria-label="Revenue trend">
         <div className="bg-white rounded-xl shadow-sm border border-[#E5E7EB] p-6">
           <h2 className="text-lg font-semibold text-[#111827] mb-4">Revenue Trend</h2>
-          <SimpleLineChart
-            data={revenueTimeSeries as unknown as Record<string, unknown>[]}
-            xKey="month"
-            yKey="mrr"
-            aria-label="Monthly recurring revenue over 12 months"
-          />
+          {dashboardLoading ? (
+            <LoadingSkeleton lines={5} />
+          ) : dashboardError ? (
+            <ErrorState message={dashboardError} onRetry={refetchDashboard} />
+          ) : (
+            <SimpleLineChart
+              data={dashboardData?.revenue as unknown as Record<string, unknown>[] ?? []}
+              xKey="month"
+              yKey="mrr"
+              aria-label="Monthly recurring revenue over 12 months"
+            />
+          )}
         </div>
       </section>
 
@@ -76,7 +113,7 @@ export default function WorkspaceHomePage() {
             aria-label="Ask a question about your data"
           />
           <div className="flex flex-wrap gap-2 mt-4">
-            {suggestedQuestions.slice(0, 4).map((question) => (
+            {suggestedQuestions.map((question) => (
               <Button
                 key={question}
                 variant="outline"
@@ -96,11 +133,17 @@ export default function WorkspaceHomePage() {
         <section aria-label="Recently certified metrics">
           <div className="bg-white rounded-xl shadow-sm border border-[#E5E7EB] p-6">
             <h2 className="text-lg font-semibold text-[#111827] mb-4">Recently Certified Metrics</h2>
-            <DataTable
-              columns={metricsColumns}
-              data={recentMetrics}
-              caption="Recently certified metrics with name, owner, date, and status"
-            />
+            {metricsLoading ? (
+              <LoadingSkeleton lines={5} />
+            ) : metricsError ? (
+              <ErrorState message={metricsError} onRetry={refetchMetrics} />
+            ) : (
+              <DataTable
+                columns={metricsColumns}
+                data={metricsData?.metrics.filter((m) => m.certified) ?? []}
+                caption="Recently certified metrics with name, owner, date, and status"
+              />
+            )}
           </div>
         </section>
 
@@ -108,22 +151,28 @@ export default function WorkspaceHomePage() {
         <section aria-label="Trust health">
           <div className="bg-white rounded-xl shadow-sm border border-[#E5E7EB] p-6">
             <h2 className="text-lg font-semibold text-[#111827] mb-4">Trust Health</h2>
-            <div className="space-y-5">
-              {trustHealth.map((item) => (
-                <div key={item.label}>
+            {dashboardLoading ? (
+              <LoadingSkeleton lines={4} />
+            ) : dashboardError ? (
+              <ErrorState message={dashboardError} onRetry={refetchDashboard} />
+            ) : dashboardData?.aiInsight ? (
+              <div className="space-y-5">
+                <div>
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-[#111827]">{item.label}</span>
+                    <span className="text-sm font-medium text-[#111827]">AI Confidence</span>
                     <span className="text-sm font-semibold text-[#111827]">
-                      {item.value}%
+                      {dashboardData.aiInsight.confidence}%
                     </span>
                   </div>
                   <Progress
-                    value={item.value > 1 ? item.value : item.value * 100}
-                    color={item.value >= 90 ? '#16A34A' : item.value < 1 ? '#16A34A' : '#D97706'}
+                    value={dashboardData.aiInsight.confidence}
+                    color={dashboardData.aiInsight.confidence >= 90 ? '#16A34A' : '#D97706'}
                   />
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No trust health data available</p>
+            )}
           </div>
         </section>
       </div>

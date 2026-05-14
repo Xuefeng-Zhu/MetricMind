@@ -1,24 +1,27 @@
 "use client";
 
-import { dataSources, datasets, schemaColumns, connectorRoadmap } from "@/lib/mock-data/data-sources";
-import type { Dataset, SchemaColumn as SchemaColumnType } from "@/lib/mock-data/types";
-import { DataTable } from "@/components/data-table/data-table";
+import { useApiQuery } from "@/hooks/use-api-query";
+import type { DataSourcesResponse } from "@/types/api-responses";
+import { LoadingSkeleton, ErrorState, EmptyState } from "@/components/ui/api-states";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { FileText, Database, Cloud, Upload } from "lucide-react";
 
 const sourceIcons: Record<string, React.ReactNode> = {
+  csv: <FileText className="h-8 w-8 text-[#4B5563]" />,
   "file-text": <FileText className="h-8 w-8 text-[#4B5563]" />,
   database: <Database className="h-8 w-8 text-[#4B5563]" />,
+  salesforce: <Cloud className="h-8 w-8 text-[#4B5563]" />,
   cloud: <Cloud className="h-8 w-8 text-[#4B5563]" />,
 };
 
 function getStatusBadge(status: string) {
   switch (status) {
     case "Active":
+    case "active":
       return <Badge variant="success">{status}</Badge>;
     case "Demo":
+    case "demo":
       return <Badge className="bg-blue-500 text-white">{status}</Badge>;
     case "Coming Soon":
       return <Badge variant="secondary">{status}</Badge>;
@@ -27,77 +30,42 @@ function getStatusBadge(status: string) {
   }
 }
 
-const datasetColumns: {
-  key: keyof Dataset;
-  label: string;
-  render?: (value: Dataset[keyof Dataset], row: Dataset) => React.ReactNode;
-}[] = [
-  { key: "name", label: "Name" },
-  {
-    key: "rows",
-    label: "Rows",
-    render: (value) => (value as number).toLocaleString(),
-  },
-  { key: "columns", label: "Columns" },
-  {
-    key: "qualityScore",
-    label: "Quality",
-    render: (value) => (
-      <div className="flex items-center gap-2">
-        <Progress value={value as number} color="#16A34A" className="w-24" />
-        <span className="text-xs text-[#4B5563]">{value as number}%</span>
-      </div>
-    ),
-  },
-  {
-    key: "semanticCoverage",
-    label: "Semantic Coverage",
-    render: (value) => (
-      <div className="flex items-center gap-2">
-        <Progress value={value as number} color="#2563EB" className="w-24" />
-        <span className="text-xs text-[#4B5563]">{value as number}%</span>
-      </div>
-    ),
-  },
-  { key: "lastUpdated", label: "Last Updated" },
-];
-
-const schemaTableColumns: {
-  key: keyof SchemaColumnType;
-  label: string;
-  render?: (value: SchemaColumnType[keyof SchemaColumnType], row: SchemaColumnType) => React.ReactNode;
-}[] = [
-  { key: "name", label: "Column Name" },
-  {
-    key: "inferredType",
-    label: "Inferred Type",
-    render: (value) => (
-      <Badge variant="outline" className="capitalize">
-        {value as string}
-      </Badge>
-    ),
-  },
-  {
-    key: "semanticType",
-    label: "Semantic Type",
-    render: (value) => {
-      const v = value as string;
-      const variant =
-        v === "measure"
-          ? "default"
-          : v === "dimension"
-            ? "secondary"
-            : "warning";
-      return (
-        <Badge variant={variant} className="capitalize">
-          {v}
-        </Badge>
-      );
-    },
-  },
-];
-
 export default function DataSourcesPage() {
+  const { data, isLoading, error, refetch } = useApiQuery<DataSourcesResponse>('/api/data-sources');
+
+  if (isLoading) {
+    return (
+      <div className="space-y-8">
+        <h1 className="text-2xl font-bold text-[#111827]">Data Sources</h1>
+        <LoadingSkeleton lines={6} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-8">
+        <h1 className="text-2xl font-bold text-[#111827]">Data Sources</h1>
+        <ErrorState message={error} onRetry={refetch} />
+      </div>
+    );
+  }
+
+  const dataSources = data?.dataSources ?? [];
+
+  if (dataSources.length === 0) {
+    return (
+      <div className="space-y-8">
+        <h1 className="text-2xl font-bold text-[#111827]">Data Sources</h1>
+        <EmptyState
+          title="No data sources connected"
+          description="Connect a data source or upload a CSV to get started with MetricMind."
+          action={{ label: "Upload CSV", onClick: () => {} }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold text-[#111827]">Data Sources</h1>
@@ -110,7 +78,7 @@ export default function DataSourcesPage() {
               key={source.id}
               className="bg-white rounded-xl border border-[#E5E7EB] p-6 flex items-center gap-4"
             >
-              {sourceIcons[source.icon]}
+              {sourceIcons[source.type] || <Database className="h-8 w-8 text-[#4B5563]" />}
               <div className="flex-1">
                 <p className="font-medium text-[#111827]">{source.name}</p>
               </div>
@@ -134,56 +102,6 @@ export default function DataSourcesPage() {
               Accepted formats: .csv, .tsv, .xlsx
             </p>
           </div>
-        </div>
-      </section>
-
-      {/* Dataset Catalog */}
-      <section aria-label="Dataset catalog">
-        <h2 className="text-lg font-semibold text-[#111827] mb-4">
-          Dataset Catalog
-        </h2>
-        <div className="bg-white rounded-xl border border-[#E5E7EB] overflow-hidden">
-          <DataTable
-            columns={datasetColumns}
-            data={datasets}
-            caption="Dataset catalog showing all uploaded datasets with quality and coverage metrics"
-          />
-        </div>
-      </section>
-
-      {/* Schema Inference */}
-      <section aria-label="Schema inference">
-        <h2 className="text-lg font-semibold text-[#111827] mb-4">
-          Schema Inference
-        </h2>
-        <div className="bg-white rounded-xl border border-[#E5E7EB] overflow-hidden">
-          <DataTable
-            columns={schemaTableColumns}
-            data={schemaColumns}
-            caption="Schema inference showing detected column names, inferred types, and semantic classifications"
-          />
-        </div>
-      </section>
-
-      {/* Connector Roadmap */}
-      <section aria-label="Connector roadmap">
-        <h2 className="text-lg font-semibold text-[#111827] mb-4">
-          Connector Roadmap
-        </h2>
-        <div className="bg-white rounded-xl border border-[#E5E7EB] p-6">
-          <ul className="space-y-3">
-            {connectorRoadmap.map((connector) => (
-              <li
-                key={connector.name}
-                className="flex items-center justify-between"
-              >
-                <span className="font-medium text-[#111827]">
-                  {connector.name}
-                </span>
-                <Badge variant="outline">{connector.quarter}</Badge>
-              </li>
-            ))}
-          </ul>
         </div>
       </section>
     </div>
