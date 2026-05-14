@@ -5,8 +5,8 @@ import {
   DataSourceService,
 } from "./data-source-service";
 
-// Mock Supabase client
-function createMockSupabase() {
+// Mock InsForge client
+function createMockInsForge() {
   const mockChain = {
     insert: vi.fn().mockReturnThis(),
     select: vi.fn().mockReturnThis(),
@@ -18,11 +18,11 @@ function createMockSupabase() {
     single: vi.fn().mockResolvedValue({ data: null, error: null }),
   };
 
-  const supabase = {
+  const insforge = {
     from: vi.fn().mockReturnValue(mockChain),
   };
 
-  return { supabase, mockChain };
+  return { insforge, mockChain };
 }
 
 describe("suggestSemanticType", () => {
@@ -109,14 +109,14 @@ describe("suggestSemanticType", () => {
 
 describe("DataSourceService", () => {
   let service: DataSourceService;
-  let supabase: ReturnType<typeof createMockSupabase>["supabase"];
-  let mockChain: ReturnType<typeof createMockSupabase>["mockChain"];
+  let insforge: ReturnType<typeof createMockInsForge>["insforge"];
+  let mockChain: ReturnType<typeof createMockInsForge>["mockChain"];
 
   beforeEach(() => {
-    const mock = createMockSupabase();
-    supabase = mock.supabase;
+    const mock = createMockInsForge();
+    insforge = mock.insforge;
     mockChain = mock.mockChain;
-    service = createDataSourceService(supabase as any);
+    service = createDataSourceService(insforge as any);
   });
 
   describe("uploadCSV", () => {
@@ -174,8 +174,8 @@ describe("DataSourceService", () => {
 
       expect(result.status).toBe("ready");
       expect(result.row_count).toBe(2);
-      expect(supabase.from).toHaveBeenCalledWith("data_sources");
-      expect(supabase.from).toHaveBeenCalledWith("dataset_columns");
+      expect(insforge.from).toHaveBeenCalledWith("data_sources");
+      expect(insforge.from).toHaveBeenCalledWith("dataset_columns");
     });
 
     it("should set status to 'error' if data source creation fails", async () => {
@@ -220,7 +220,7 @@ describe("DataSourceService", () => {
       const result = await service.getDataSources("ws-1");
 
       expect(result).toEqual(mockSources);
-      expect(supabase.from).toHaveBeenCalledWith("data_sources");
+      expect(insforge.from).toHaveBeenCalledWith("data_sources");
     });
 
     it("should return empty array when no data sources exist", async () => {
@@ -355,7 +355,7 @@ describe("DataSourceService", () => {
       const result = await service.getColumns("ds-1");
 
       expect(result).toEqual(mockColumns);
-      expect(supabase.from).toHaveBeenCalledWith("dataset_columns");
+      expect(insforge.from).toHaveBeenCalledWith("dataset_columns");
     });
 
     it("should return empty array when no columns exist", async () => {

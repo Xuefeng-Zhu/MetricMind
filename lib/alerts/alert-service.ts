@@ -9,7 +9,7 @@
  * Requirements: 23.1, 23.2, 23.3
  */
 
-import { SupabaseClient } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 import { AuditService, createAuditService } from "../audit/audit-service";
 
 // --- Types ---
@@ -53,10 +53,10 @@ export interface AlertService {
 /**
  * Creates an AlertService instance.
  *
- * @param supabase - Supabase client for database operations
+ * @param insforge - InsForge client for database operations
  */
-export function createAlertService(supabase: SupabaseClient): AlertService {
-  const auditService: AuditService = createAuditService(supabase);
+export function createAlertService(insforge: InsForgeDatabaseClient): AlertService {
+  const auditService: AuditService = createAuditService(insforge);
 
   return {
     async createAlert(
@@ -76,7 +76,7 @@ export function createAlertService(supabase: SupabaseClient): AlertService {
         );
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from("alerts")
         .insert({
           workspace_id: workspaceId,
@@ -98,7 +98,7 @@ export function createAlertService(supabase: SupabaseClient): AlertService {
     },
 
     async getAlerts(workspaceId: string): Promise<Alert[]> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from("alerts")
         .select(
           "id, workspace_id, metric_id, condition_type, threshold_value, notification_type, created_by, enabled, created_at"
@@ -115,7 +115,7 @@ export function createAlertService(supabase: SupabaseClient): AlertService {
 
     async checkAlerts(workspaceId: string): Promise<FiredAlert[]> {
       // Get all enabled alerts for the workspace
-      const { data: alerts, error: alertsError } = await supabase
+      const { data: alerts, error: alertsError } = await insforge
         .from("alerts")
         .select(
           "id, workspace_id, metric_id, condition_type, threshold_value, notification_type, created_by, enabled"
@@ -140,7 +140,7 @@ export function createAlertService(supabase: SupabaseClient): AlertService {
           alert.condition_type === "threshold_below"
         ) {
           const metricValue = await getMetricCurrentValue(
-            supabase,
+            insforge,
             alert.metric_id,
             workspaceId
           );
@@ -169,7 +169,7 @@ export function createAlertService(supabase: SupabaseClient): AlertService {
             const firedAt = new Date().toISOString();
 
             // Create alert notification record
-            await supabase.from("alert_notifications").insert({
+            await insforge.from("alert_notifications").insert({
               alert_id: alert.id,
               workspace_id: workspaceId,
               metric_value: metricValue,
@@ -204,14 +204,14 @@ export function createAlertService(supabase: SupabaseClient): AlertService {
           // For MVP, anomaly detection uses a simplified approach:
           // Compare current value against historical average ± 2 standard deviations
           const anomalyResult = await checkAnomalyCondition(
-            supabase,
+            insforge,
             alert,
             workspaceId
           );
 
           if (anomalyResult) {
             // Create alert notification record
-            await supabase.from("alert_notifications").insert({
+            await insforge.from("alert_notifications").insert({
               alert_id: alert.id,
               workspace_id: workspaceId,
               metric_value: anomalyResult.metricValue,
@@ -278,12 +278,12 @@ function mapAlertRow(row: any): Alert {
  * If the RPC is not available, falls back to returning null.
  */
 async function getMetricCurrentValue(
-  supabase: SupabaseClient,
+  insforge: InsForgeDatabaseClient,
   metricId: string,
   workspaceId: string
 ): Promise<number | null> {
   // First, get the metric's formula
-  const { data: metric, error: metricError } = await supabase
+  const { data: metric, error: metricError } = await insforge
     .from("metrics")
     .select("formula, name")
     .eq("id", metricId)
@@ -296,7 +296,7 @@ async function getMetricCurrentValue(
   // Try to execute the metric formula as SQL
   // The formula is expected to be a SQL expression (e.g., "SELECT SUM(amount) FROM invoices")
   try {
-    const { data, error } = await supabase.rpc("execute_readonly_query", {
+    const { data, error } = await insforge.rpc("execute_readonly_query", {
       query_text: metric.formula,
       workspace_id: workspaceId,
     });
@@ -338,12 +338,12 @@ async function getMetricCurrentValue(
  * If no threshold_value is set, we cannot evaluate the anomaly.
  */
 async function checkAnomalyCondition(
-  supabase: SupabaseClient,
+  insforge: InsForgeDatabaseClient,
   alert: any,
   workspaceId: string
 ): Promise<{ metricValue: number; threshold: number; firedAt: string } | null> {
   const metricValue = await getMetricCurrentValue(
-    supabase,
+    insforge,
     alert.metric_id,
     workspaceId
   );

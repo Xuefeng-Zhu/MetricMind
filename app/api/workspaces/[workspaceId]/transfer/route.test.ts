@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-// Mock the Supabase server client
-vi.mock("@/lib/supabase/server", () => ({
+// Mock the InsForge server client
+vi.mock("@/lib/insforge/server", () => ({
   createClient: vi.fn(),
 }));
 
@@ -17,7 +17,7 @@ vi.mock("@/lib/rbac/rbac-middleware", () => ({
   resolveWorkspaceRole: vi.fn(),
 }));
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/insforge/server";
 import { createWorkspaceService } from "@/lib/workspaces/workspace-service";
 import { hasPermission, resolveWorkspaceRole } from "@/lib/rbac/rbac-middleware";
 import { POST } from "./route";
@@ -27,7 +27,7 @@ const mockCreateWorkspaceService = createWorkspaceService as ReturnType<typeof v
 const mockHasPermission = hasPermission as ReturnType<typeof vi.fn>;
 const mockResolveWorkspaceRole = resolveWorkspaceRole as ReturnType<typeof vi.fn>;
 
-function createMockSupabase(user: { id: string } | null = null) {
+function createMockInsForge(user: { id: string } | null = null) {
   return {
     auth: {
       getUser: vi.fn().mockResolvedValue({
@@ -46,7 +46,7 @@ describe("POST /api/workspaces/[workspaceId]/transfer", () => {
   });
 
   it("returns 401 when user is not authenticated", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase(null));
+    mockCreateClient.mockReturnValue(createMockInsForge(null));
 
     const request = new NextRequest("http://localhost:3000/api/workspaces/ws-1/transfer", {
       method: "POST",
@@ -61,7 +61,7 @@ describe("POST /api/workspaces/[workspaceId]/transfer", () => {
   });
 
   it("returns 403 when user is not a workspace member", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue(null);
 
     const request = new NextRequest("http://localhost:3000/api/workspaces/ws-1/transfer", {
@@ -77,7 +77,7 @@ describe("POST /api/workspaces/[workspaceId]/transfer", () => {
   });
 
   it("returns 403 when user is not owner", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("admin");
     mockHasPermission.mockReturnValue(false);
 
@@ -94,7 +94,7 @@ describe("POST /api/workspaces/[workspaceId]/transfer", () => {
   });
 
   it("returns 400 when newOwnerId is missing", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("owner");
     mockHasPermission.mockReturnValue(true);
 
@@ -111,7 +111,7 @@ describe("POST /api/workspaces/[workspaceId]/transfer", () => {
   });
 
   it("returns 400 when newOwnerId is empty", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("owner");
     mockHasPermission.mockReturnValue(true);
 
@@ -128,7 +128,7 @@ describe("POST /api/workspaces/[workspaceId]/transfer", () => {
   });
 
   it("transfers ownership and returns 200", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("owner");
     mockHasPermission.mockReturnValue(true);
     mockCreateWorkspaceService.mockReturnValue({
@@ -148,7 +148,7 @@ describe("POST /api/workspaces/[workspaceId]/transfer", () => {
   });
 
   it("returns 500 when transfer fails", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("owner");
     mockHasPermission.mockReturnValue(true);
     mockCreateWorkspaceService.mockReturnValue({
@@ -168,7 +168,7 @@ describe("POST /api/workspaces/[workspaceId]/transfer", () => {
   });
 
   it("returns 400 when body is invalid JSON", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("owner");
     mockHasPermission.mockReturnValue(true);
 

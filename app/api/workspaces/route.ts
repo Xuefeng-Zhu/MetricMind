@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/insforge/server";
 import { createWorkspaceService } from "@/lib/workspaces/workspace-service";
 
 /**
@@ -8,11 +8,11 @@ import { createWorkspaceService } from "@/lib/workspaces/workspace-service";
  * Any authenticated user can access this.
  */
 export async function GET(): Promise<NextResponse> {
-  const supabase = createClient();
+  const insforge = createClient();
   const {
     data: { user },
     error: authError,
-  } = await supabase.auth.getUser();
+  } = await insforge.auth.getUser();
 
   if (authError || !user) {
     return NextResponse.json(
@@ -22,7 +22,7 @@ export async function GET(): Promise<NextResponse> {
   }
 
   try {
-    const workspaceService = createWorkspaceService(supabase);
+    const workspaceService = createWorkspaceService(insforge);
     const workspaces = await workspaceService.getByUser(user.id);
     return NextResponse.json({ workspaces });
   } catch (error) {
@@ -41,11 +41,11 @@ export async function GET(): Promise<NextResponse> {
  * Body: { name: string }
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const supabase = createClient();
+  const insforge = createClient();
   const {
     data: { user },
     error: authError,
-  } = await supabase.auth.getUser();
+  } = await insforge.auth.getUser();
 
   if (authError || !user) {
     return NextResponse.json(
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const workspaceService = createWorkspaceService(supabase);
+    const workspaceService = createWorkspaceService(insforge);
     const workspace = await workspaceService.create(name.trim(), user.id);
     return NextResponse.json({ workspace }, { status: 201 });
   } catch (error) {

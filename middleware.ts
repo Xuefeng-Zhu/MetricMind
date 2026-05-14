@@ -1,63 +1,111 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+
+import {
+  accessCookieMaxAge,
+  authCookieOptions,
+  INSFORGE_ACCESS_COOKIE,
+  INSFORGE_REFRESH_COOKIE,
+  refreshCookieMaxAge,
+} from "@/lib/insforge/auth-cookies";
+
+async function fetchCurrentUser(accessToken: string) {
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_INSFORGE_URL}/api/auth/sessions/current`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function refreshSession(refreshToken: string) {
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_INSFORGE_URL}/api/auth/refresh?client_type=mobile`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      }
+    );
+
+    if (!response.ok) return null;
+
+    return (await response.json()) as {
+      accessToken?: string;
+      refreshToken?: string;
+      user?: unknown;
+    };
+  } catch {
+    return null;
+  }
+}
+
+function redirectToLogin(request: NextRequest) {
+  const response = NextResponse.redirect(new URL("/login", request.url));
+  response.cookies.set(INSFORGE_ACCESS_COOKIE, "", {
+    ...authCookieOptions,
+    maxAge: 0,
+  });
+  response.cookies.set(INSFORGE_REFRESH_COOKIE, "", {
+    ...authCookieOptions,
+    maxAge: 0,
+  });
+  return response;
+}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Only protect /app routes — skip auth check for everything else
   if (!pathname.startsWith("/app")) {
     return NextResponse.next();
   }
 
-  let response = NextResponse.next();
+  const accessToken = request.cookies.get(INSFORGE_ACCESS_COOKIE)?.value;
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  if (accessToken && (await fetchCurrentUser(accessToken))) {
+    return NextResponse.next();
+  }
+
+  const refreshToken = request.cookies.get(INSFORGE_REFRESH_COOKIE)?.value;
+
+  if (!refreshToken) {
+    return redirectToLogin(request);
+  }
+
+  const refreshed = await refreshSession(refreshToken);
+
+  if (!refreshed?.accessToken || !refreshed.user) {
+    return redirectToLogin(request);
+  }
+
+  const response = NextResponse.next();
+  response.cookies.set(INSFORGE_ACCESS_COOKIE, refreshed.accessToken, {
+    ...authCookieOptions,
+    maxAge: accessCookieMaxAge,
+  });
+  response.cookies.set(
+    INSFORGE_REFRESH_COOKIE,
+    refreshed.refreshToken ?? refreshToken,
     {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(
-          cookiesToSet: {
-            name: string;
-            value: string;
-            options: CookieOptions;
-          }[]
-        ) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            request.cookies.set({ name, value, ...options });
-          });
-          response = NextResponse.next();
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set({ name, value, ...options });
-          });
-        },
-      },
+      ...authCookieOptions,
+      maxAge: refreshCookieMaxAge,
     }
   );
-
-  // Refresh the session token and check authentication
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // Redirect unauthenticated users to login
-  if (!user) {
-    const loginUrl = new URL("/login", request.url);
-    return NextResponse.redirect(loginUrl);
-  }
 
   return response;
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all routes under /app (the protected area).
-     * Public routes (/, /login, /signup, /demo) are not matched.
-     */
-    "/app/:path*",
-  ],
+  matcher: ["/app/:path*"],
 };

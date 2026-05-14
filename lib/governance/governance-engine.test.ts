@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SupabaseClient } from '@supabase/supabase-js';
+import { InsForgeDatabaseClient } from '@/lib/insforge/types';
 import {
   createGovernanceEngine,
   checkDenylist,
@@ -14,12 +14,12 @@ import {
   AIResponse,
 } from './governance-engine';
 
-// --- Mock Supabase ---
+// --- Mock InsForge ---
 
-function createMockSupabase(options?: {
+function createMockInsForge(options?: {
   policies?: { policy_type: string; pattern: string }[];
   metrics?: { name: string; formula: string; certified: boolean }[];
-}): SupabaseClient {
+}): InsForgeDatabaseClient {
   const insertMock = vi.fn().mockResolvedValue({ data: null, error: null });
 
   const selectMock = vi.fn().mockImplementation(() => {
@@ -62,7 +62,7 @@ function createMockSupabase(options?: {
       }
       return { select: selectMock, insert: insertMock };
     }),
-  } as unknown as SupabaseClient;
+  } as unknown as InsForgeDatabaseClient;
 }
 
 // --- Test Data ---
@@ -338,11 +338,11 @@ describe('Governance Engine', () => {
 
   describe('validateSQL (integration)', () => {
     let engine: GovernanceEngine;
-    let supabase: SupabaseClient;
+    let insforge: InsForgeDatabaseClient;
 
     beforeEach(() => {
-      supabase = createMockSupabase();
-      engine = createGovernanceEngine(supabase);
+      insforge = createMockInsForge();
+      engine = createGovernanceEngine(insforge);
     });
 
     it('validates a clean SELECT query', async () => {
@@ -376,7 +376,7 @@ describe('Governance Engine', () => {
     it('logs security event on rejection', async () => {
       await engine.validateSQL('DROP TABLE customers', defaultContext);
 
-      expect(supabase.from).toHaveBeenCalledWith('audit_events');
+      expect(insforge.from).toHaveBeenCalledWith('audit_events');
     });
 
     it('rejects non-SELECT statements', async () => {
@@ -391,13 +391,13 @@ describe('Governance Engine', () => {
 
   describe('checkMetricReferences', () => {
     it('validates SQL with known metrics', async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         metrics: [
           { name: 'MRR', formula: 'SUM(mrr_cents)/100', certified: true },
           { name: 'ARR', formula: 'MRR * 12', certified: true },
         ],
       });
-      const engine = createGovernanceEngine(supabase);
+      const engine = createGovernanceEngine(insforge);
 
       const result = await engine.checkMetricReferences(
         'SELECT SUM(mrr_cents)/100 AS MRR FROM subscriptions',
@@ -408,12 +408,12 @@ describe('Governance Engine', () => {
     });
 
     it('returns valid when all metrics are known', async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         metrics: [
           { name: 'MRR', formula: 'SUM(mrr_cents)/100', certified: true },
         ],
       });
-      const engine = createGovernanceEngine(supabase);
+      const engine = createGovernanceEngine(insforge);
 
       const result = await engine.checkMetricReferences(
         'SELECT SUM(mrr_cents)/100 AS total FROM subscriptions',
@@ -427,12 +427,12 @@ describe('Governance Engine', () => {
 
   describe('flagHallucination', () => {
     it('flags citations referencing non-existent metrics', async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         metrics: [
           { name: 'MRR', formula: 'SUM(mrr_cents)/100', certified: true },
         ],
       });
-      const engine = createGovernanceEngine(supabase);
+      const engine = createGovernanceEngine(insforge);
 
       const response: AIResponse = {
         sql: 'SELECT SUM(mrr_cents)/100 AS MRR FROM subscriptions',
@@ -451,13 +451,13 @@ describe('Governance Engine', () => {
     });
 
     it('does not flag when all cited metrics exist', async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         metrics: [
           { name: 'MRR', formula: 'SUM(mrr_cents)/100', certified: true },
           { name: 'ARR', formula: 'MRR * 12', certified: true },
         ],
       });
-      const engine = createGovernanceEngine(supabase);
+      const engine = createGovernanceEngine(insforge);
 
       const response: AIResponse = {
         sql: 'SELECT SUM(mrr_cents)/100 AS MRR FROM subscriptions',
@@ -475,12 +475,12 @@ describe('Governance Engine', () => {
     });
 
     it('detects calculation mismatches against certified definitions', async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         metrics: [
           { name: 'MRR', formula: 'SUM(mrr_cents)/100', certified: true },
         ],
       });
-      const engine = createGovernanceEngine(supabase);
+      const engine = createGovernanceEngine(insforge);
 
       const response: AIResponse = {
         sql: 'SELECT AVG(mrr_cents) AS MRR FROM subscriptions',
@@ -498,10 +498,10 @@ describe('Governance Engine', () => {
     });
 
     it('logs security event when hallucination is detected', async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         metrics: [],
       });
-      const engine = createGovernanceEngine(supabase);
+      const engine = createGovernanceEngine(insforge);
 
       const response: AIResponse = {
         sql: 'SELECT 1',
@@ -514,7 +514,7 @@ describe('Governance Engine', () => {
 
       await engine.flagHallucination(response, 'ws-test-123');
 
-      expect(supabase.from).toHaveBeenCalledWith('audit_events');
+      expect(insforge.from).toHaveBeenCalledWith('audit_events');
     });
   });
 });

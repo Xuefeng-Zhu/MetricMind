@@ -1,4 +1,4 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 
 export type Role = "owner" | "admin" | "analyst" | "viewer";
 
@@ -38,12 +38,12 @@ export interface WorkspaceService {
 }
 
 export function createWorkspaceService(
-  supabase: SupabaseClient
+  insforge: InsForgeDatabaseClient
 ): WorkspaceService {
   return {
     async create(name: string, userId: string): Promise<Workspace> {
       // Create the workspace with the user as owner
-      const { data: workspace, error: workspaceError } = await supabase
+      const { data: workspace, error: workspaceError } = await insforge
         .from("workspaces")
         .insert({ name, owner_id: userId })
         .select("id, name, created_at, owner_id")
@@ -56,7 +56,7 @@ export function createWorkspaceService(
       }
 
       // Add the creating user as a member with 'owner' role
-      const { error: memberError } = await supabase
+      const { error: memberError } = await insforge
         .from("workspace_members")
         .insert({
           workspace_id: workspace.id,
@@ -73,7 +73,7 @@ export function createWorkspaceService(
 
     async getByUser(userId: string): Promise<Workspace[]> {
       // Get all workspaces where the user is a member
-      const { data: memberships, error: memberError } = await supabase
+      const { data: memberships, error: memberError } = await insforge
         .from("workspace_members")
         .select("workspace_id")
         .eq("user_id", userId);
@@ -88,7 +88,7 @@ export function createWorkspaceService(
 
       const workspaceIds = memberships.map((m) => m.workspace_id);
 
-      const { data: workspaces, error: workspaceError } = await supabase
+      const { data: workspaces, error: workspaceError } = await insforge
         .from("workspaces")
         .select("id, name, created_at, owner_id")
         .in("id", workspaceIds);
@@ -106,7 +106,7 @@ export function createWorkspaceService(
       role: Role
     ): Promise<Membership> {
       // Look up the auth user id by email using an RPC function
-      const { data: authUserId, error: authError } = await supabase.rpc(
+      const { data: authUserId, error: authError } = await insforge.rpc(
         "get_user_id_by_email",
         { email_input: email }
       );
@@ -116,7 +116,7 @@ export function createWorkspaceService(
       }
 
       // Get the profile id for this auth user
-      const { data: profile, error: profileError } = await supabase
+      const { data: profile, error: profileError } = await insforge
         .from("profiles")
         .select("id")
         .eq("auth_user_id", authUserId)
@@ -127,7 +127,7 @@ export function createWorkspaceService(
       }
 
       // Create the membership record
-      const { data: membership, error: memberError } = await supabase
+      const { data: membership, error: memberError } = await insforge
         .from("workspace_members")
         .insert({
           workspace_id: workspaceId,
@@ -151,7 +151,7 @@ export function createWorkspaceService(
       memberId: string,
       role: Role
     ): Promise<Membership> {
-      const { data: membership, error } = await supabase
+      const { data: membership, error } = await insforge
         .from("workspace_members")
         .update({ role })
         .eq("id", memberId)
@@ -170,7 +170,7 @@ export function createWorkspaceService(
       workspaceId: string,
       memberId: string
     ): Promise<void> {
-      const { error } = await supabase
+      const { error } = await insforge
         .from("workspace_members")
         .delete()
         .eq("id", memberId)
@@ -186,7 +186,7 @@ export function createWorkspaceService(
       newOwnerId: string
     ): Promise<void> {
       // Get the current owner from the workspace
-      const { data: workspace, error: wsError } = await supabase
+      const { data: workspace, error: wsError } = await insforge
         .from("workspaces")
         .select("owner_id")
         .eq("id", workspaceId)
@@ -200,7 +200,7 @@ export function createWorkspaceService(
 
       // Atomically update: demote current owner to admin, promote new owner, update workspace
       // Update current owner's role to admin
-      const { error: demoteError } = await supabase
+      const { error: demoteError } = await insforge
         .from("workspace_members")
         .update({ role: "admin" })
         .eq("workspace_id", workspaceId)
@@ -213,7 +213,7 @@ export function createWorkspaceService(
       }
 
       // Update new owner's role to owner
-      const { error: promoteError } = await supabase
+      const { error: promoteError } = await insforge
         .from("workspace_members")
         .update({ role: "owner" })
         .eq("workspace_id", workspaceId)
@@ -221,7 +221,7 @@ export function createWorkspaceService(
 
       if (promoteError) {
         // Attempt to rollback the demotion
-        await supabase
+        await insforge
           .from("workspace_members")
           .update({ role: "owner" })
           .eq("workspace_id", workspaceId)
@@ -233,20 +233,20 @@ export function createWorkspaceService(
       }
 
       // Update workspace owner_id
-      const { error: updateError } = await supabase
+      const { error: updateError } = await insforge
         .from("workspaces")
         .update({ owner_id: newOwnerId })
         .eq("id", workspaceId);
 
       if (updateError) {
         // Attempt to rollback both role changes
-        await supabase
+        await insforge
           .from("workspace_members")
           .update({ role: "owner" })
           .eq("workspace_id", workspaceId)
           .eq("user_id", currentOwnerId);
 
-        await supabase
+        await insforge
           .from("workspace_members")
           .update({ role: "viewer" })
           .eq("workspace_id", workspaceId)

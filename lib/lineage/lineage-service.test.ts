@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createLineageService, LineageNodeType } from './lineage-service';
-import { SupabaseClient } from '@supabase/supabase-js';
+import { InsForgeDatabaseClient } from '@/lib/insforge/types';
 
 // Helper to create a chainable mock query builder
 function createQueryBuilder(result: { data: any; error: any }) {
@@ -18,7 +18,7 @@ function createQueryBuilder(result: { data: any; error: any }) {
   return builder;
 }
 
-function createMockSupabase(overrides: { from?: Record<string, any> } = {}) {
+function createMockInsForge(overrides: { from?: Record<string, any> } = {}) {
   const fromMocks = overrides.from ?? {};
 
   return {
@@ -28,7 +28,7 @@ function createMockSupabase(overrides: { from?: Record<string, any> } = {}) {
       }
       return createQueryBuilder({ data: null, error: null });
     }),
-  } as unknown as SupabaseClient;
+  } as unknown as InsForgeDatabaseClient;
 }
 
 describe('LineageService', () => {
@@ -40,11 +40,11 @@ describe('LineageService', () => {
         then: (resolve: any) => resolve({ data: [], error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { lineage_records: lineageBuilder },
       });
 
-      const service = createLineageService(supabase);
+      const service = createLineageService(insforge);
       const result = await service.buildLineageGraph('trace-1', 'ws-1');
 
       expect(result.nodes).toEqual([]);
@@ -106,7 +106,7 @@ describe('LineageService', () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: {
           lineage_records: lineageBuilder,
           data_sources: dataSourcesBuilder,
@@ -116,7 +116,7 @@ describe('LineageService', () => {
         },
       });
 
-      const service = createLineageService(supabase);
+      const service = createLineageService(insforge);
       const result = await service.buildLineageGraph('trace-1', 'ws-1');
 
       // Should have 6 nodes: data_source, dataset, entity, metric, sql_query, result
@@ -188,7 +188,7 @@ describe('LineageService', () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: {
           lineage_records: lineageBuilder,
           data_sources: dataSourcesBuilder,
@@ -198,7 +198,7 @@ describe('LineageService', () => {
         },
       });
 
-      const service = createLineageService(supabase);
+      const service = createLineageService(insforge);
       const result = await service.buildLineageGraph('trace-2', 'ws-1');
 
       // Should have 5 nodes (no metric): data_source, dataset, entity, sql_query, result
@@ -222,11 +222,11 @@ describe('LineageService', () => {
         then: (resolve: any) => resolve({ data: null, error: { message: 'Connection error' } }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { lineage_records: lineageBuilder },
       });
 
-      const service = createLineageService(supabase);
+      const service = createLineageService(insforge);
       await expect(service.buildLineageGraph('trace-1', 'ws-1')).rejects.toThrow(
         'Failed to fetch lineage records: Connection error'
       );
@@ -240,11 +240,11 @@ describe('LineageService', () => {
         eq: vi.fn().mockResolvedValue({ data: [], error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { ai_traces: aiTracesBuilder },
       });
 
-      const service = createLineageService(supabase);
+      const service = createLineageService(insforge);
       const result = await service.getLineageForInsight('msg-1');
 
       expect(result.nodes).toEqual([]);
@@ -266,14 +266,14 @@ describe('LineageService', () => {
         then: (resolve: any) => resolve({ data: [], error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: {
           ai_traces: aiTracesBuilder,
           lineage_records: lineageBuilder,
         },
       });
 
-      const service = createLineageService(supabase);
+      const service = createLineageService(insforge);
       const result = await service.getLineageForInsight('msg-1');
 
       expect(result.nodes).toEqual([]);
@@ -294,11 +294,11 @@ describe('LineageService', () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { data_sources: dataSourcesBuilder },
       });
 
-      const service = createLineageService(supabase);
+      const service = createLineageService(insforge);
       const result = await service.getNodeDetails('ds-abc123', 'data_source');
 
       expect(result.type).toBe('data_source');
@@ -336,7 +336,7 @@ describe('LineageService', () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: {
           semantic_entities: entitiesBuilder,
           dimensions: dimensionsBuilder,
@@ -344,7 +344,7 @@ describe('LineageService', () => {
         },
       });
 
-      const service = createLineageService(supabase);
+      const service = createLineageService(insforge);
       const result = await service.getNodeDetails('entity-ent-1', 'entity');
 
       expect(result.type).toBe('entity');
@@ -376,14 +376,14 @@ describe('LineageService', () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: {
           metrics: metricsBuilder,
           profiles: profilesBuilder,
         },
       });
 
-      const service = createLineageService(supabase);
+      const service = createLineageService(insforge);
       const result = await service.getNodeDetails('metric-m-1', 'metric');
 
       expect(result.type).toBe('metric');
@@ -406,11 +406,11 @@ describe('LineageService', () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { query_runs: queryRunsBuilder },
       });
 
-      const service = createLineageService(supabase);
+      const service = createLineageService(insforge);
       const result = await service.getNodeDetails('sql-qr-1', 'sql_query');
 
       expect(result.type).toBe('sql_query');
@@ -430,11 +430,11 @@ describe('LineageService', () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { query_runs: queryRunsBuilder },
       });
 
-      const service = createLineageService(supabase);
+      const service = createLineageService(insforge);
       const result = await service.getNodeDetails('result-qr-1', 'result');
 
       expect(result.type).toBe('result');
@@ -445,8 +445,8 @@ describe('LineageService', () => {
     });
 
     it('throws error for unknown node type', async () => {
-      const supabase = createMockSupabase();
-      const service = createLineageService(supabase);
+      const insforge = createMockInsForge();
+      const service = createLineageService(insforge);
 
       await expect(
         service.getNodeDetails('unknown-1', 'invalid_type' as LineageNodeType)
@@ -460,11 +460,11 @@ describe('LineageService', () => {
         insert: vi.fn().mockResolvedValue({ data: null, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { lineage_records: lineageBuilder },
       });
 
-      const service = createLineageService(supabase);
+      const service = createLineageService(insforge);
       await service.createLineageRecords({
         workspaceId: 'ws-1',
         aiTraceId: 'trace-1',
@@ -495,11 +495,11 @@ describe('LineageService', () => {
         insert: vi.fn().mockResolvedValue({ data: null, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { lineage_records: lineageBuilder },
       });
 
-      const service = createLineageService(supabase);
+      const service = createLineageService(insforge);
       await service.createLineageRecords({
         workspaceId: 'ws-1',
         aiTraceId: 'trace-1',
@@ -530,11 +530,11 @@ describe('LineageService', () => {
         insert: vi.fn().mockResolvedValue({ data: null, error: { message: 'Insert failed' } }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { lineage_records: lineageBuilder },
       });
 
-      const service = createLineageService(supabase);
+      const service = createLineageService(insforge);
 
       // Should not throw
       await service.createLineageRecords({

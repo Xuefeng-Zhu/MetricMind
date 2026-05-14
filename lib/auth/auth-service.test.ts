@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { createAuthService } from "./auth-service";
-import { SupabaseClient } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 
-function createMockSupabase(overrides: {
-  signUp?: ReturnType<SupabaseClient["auth"]["signUp"]>;
-  signInWithPassword?: ReturnType<SupabaseClient["auth"]["signInWithPassword"]>;
-  signOut?: ReturnType<SupabaseClient["auth"]["signOut"]>;
-  getSession?: ReturnType<SupabaseClient["auth"]["getSession"]>;
+function createMockInsForge(overrides: {
+  signUp?: ReturnType<InsForgeDatabaseClient["auth"]["signUp"]>;
+  signInWithPassword?: ReturnType<InsForgeDatabaseClient["auth"]["signInWithPassword"]>;
+  signOut?: ReturnType<InsForgeDatabaseClient["auth"]["signOut"]>;
+  getSession?: ReturnType<InsForgeDatabaseClient["auth"]["getSession"]>;
 } = {}) {
   return {
     auth: {
@@ -23,26 +23,26 @@ function createMockSupabase(overrides: {
         overrides.getSession ?? Promise.resolve({ data: { session: null }, error: null })
       ),
     },
-  } as unknown as SupabaseClient;
+  } as unknown as InsForgeDatabaseClient;
 }
 
 describe("AuthService", () => {
   describe("signUp", () => {
     it("returns user on successful signup", async () => {
       const mockUser = { id: "user-1", email: "test@example.com" };
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         signUp: Promise.resolve({
           data: { user: mockUser, session: null },
           error: null,
         }) as any,
       });
 
-      const authService = createAuthService(supabase);
+      const authService = createAuthService(insforge);
       const result = await authService.signUp("test@example.com", "password123");
 
       expect(result.user).toEqual(mockUser);
       expect(result.error).toBeNull();
-      expect(supabase.auth.signUp).toHaveBeenCalledWith({
+      expect(insforge.auth.signUp).toHaveBeenCalledWith({
         email: "test@example.com",
         password: "password123",
       });
@@ -54,14 +54,14 @@ describe("AuthService", () => {
         status: 400,
         name: "AuthApiError",
       };
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         signUp: Promise.resolve({
           data: { user: null, session: null },
           error: mockError,
         }) as any,
       });
 
-      const authService = createAuthService(supabase);
+      const authService = createAuthService(insforge);
       const result = await authService.signUp("existing@example.com", "password123");
 
       expect(result.user).toBeNull();
@@ -72,19 +72,19 @@ describe("AuthService", () => {
   describe("signIn", () => {
     it("returns user on successful login", async () => {
       const mockUser = { id: "user-1", email: "test@example.com" };
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         signInWithPassword: Promise.resolve({
           data: { user: mockUser, session: { access_token: "token" } },
           error: null,
         }) as any,
       });
 
-      const authService = createAuthService(supabase);
+      const authService = createAuthService(insforge);
       const result = await authService.signIn("test@example.com", "password123");
 
       expect(result.user).toEqual(mockUser);
       expect(result.error).toBeNull();
-      expect(supabase.auth.signInWithPassword).toHaveBeenCalledWith({
+      expect(insforge.auth.signInWithPassword).toHaveBeenCalledWith({
         email: "test@example.com",
         password: "password123",
       });
@@ -96,14 +96,14 @@ describe("AuthService", () => {
         status: 400,
         name: "AuthApiError",
       };
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         signInWithPassword: Promise.resolve({
           data: { user: null, session: null },
           error: mockError,
         }) as any,
       });
 
-      const authService = createAuthService(supabase);
+      const authService = createAuthService(insforge);
       const result = await authService.signIn("test@example.com", "wrongpassword");
 
       expect(result.user).toBeNull();
@@ -113,13 +113,13 @@ describe("AuthService", () => {
 
   describe("signOut", () => {
     it("signs out successfully", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         signOut: Promise.resolve({ error: null }) as any,
       });
 
-      const authService = createAuthService(supabase);
+      const authService = createAuthService(insforge);
       await expect(authService.signOut()).resolves.toBeUndefined();
-      expect(supabase.auth.signOut).toHaveBeenCalled();
+      expect(insforge.auth.signOut).toHaveBeenCalled();
     });
 
     it("throws error when signOut fails", async () => {
@@ -128,11 +128,11 @@ describe("AuthService", () => {
         status: 400,
         name: "AuthApiError",
       };
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         signOut: Promise.resolve({ error: mockError }) as any,
       });
 
-      const authService = createAuthService(supabase);
+      const authService = createAuthService(insforge);
       await expect(authService.signOut()).rejects.toEqual(mockError);
     });
   });
@@ -143,42 +143,42 @@ describe("AuthService", () => {
         access_token: "token",
         user: { id: "user-1", email: "test@example.com" },
       };
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         getSession: Promise.resolve({
           data: { session: mockSession },
           error: null,
         }) as any,
       });
 
-      const authService = createAuthService(supabase);
+      const authService = createAuthService(insforge);
       const session = await authService.getSession();
 
       expect(session).toEqual(mockSession);
     });
 
     it("returns null when not authenticated", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         getSession: Promise.resolve({
           data: { session: null },
           error: null,
         }) as any,
       });
 
-      const authService = createAuthService(supabase);
+      const authService = createAuthService(insforge);
       const session = await authService.getSession();
 
       expect(session).toBeNull();
     });
 
     it("returns null when getSession errors", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         getSession: Promise.resolve({
           data: { session: null },
           error: { message: "Token expired" },
         }) as any,
       });
 
-      const authService = createAuthService(supabase);
+      const authService = createAuthService(insforge);
       const session = await authService.getSession();
 
       expect(session).toBeNull();

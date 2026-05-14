@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ensureProfile } from "./ensure-profile";
-import { User } from "@supabase/supabase-js";
+import { User } from "@/lib/insforge/types";
 
 function createMockUser(overrides: Partial<User> = {}): User {
   return {
@@ -14,7 +14,7 @@ function createMockUser(overrides: Partial<User> = {}): User {
   } as User;
 }
 
-function createMockSupabase(options: {
+function createMockInsForge(options: {
   selectResult?: { data: unknown; error: unknown };
   insertResult?: { data: unknown; error: unknown };
   retrySelectResult?: { data: unknown; error: unknown };
@@ -55,12 +55,12 @@ describe("ensureProfile", () => {
       avatar_url: null,
     };
 
-    const supabase = createMockSupabase({
+    const insforge = createMockInsForge({
       selectResult: { data: existingProfile, error: null },
     });
 
     const user = createMockUser();
-    const result = await ensureProfile(supabase, user);
+    const result = await ensureProfile(insforge, user);
 
     expect(result).toEqual(existingProfile);
   });
@@ -73,13 +73,13 @@ describe("ensureProfile", () => {
       avatar_url: null,
     };
 
-    const supabase = createMockSupabase({
+    const insforge = createMockInsForge({
       selectResult: { data: null, error: { code: "PGRST116", message: "not found" } },
       insertResult: { data: newProfile, error: null },
     });
 
     const user = createMockUser();
-    const result = await ensureProfile(supabase, user);
+    const result = await ensureProfile(insforge, user);
 
     expect(result).toEqual(newProfile);
   });
@@ -92,17 +92,17 @@ describe("ensureProfile", () => {
       avatar_url: null,
     };
 
-    const supabase = createMockSupabase({
+    const insforge = createMockInsForge({
       selectResult: { data: null, error: { code: "PGRST116", message: "not found" } },
       insertResult: { data: newProfile, error: null },
     });
 
     const user = createMockUser({ email: "john@company.com" });
-    const result = await ensureProfile(supabase, user);
+    const result = await ensureProfile(insforge, user);
 
     expect(result).toEqual(newProfile);
     // Verify insert was called
-    expect(supabase.from).toHaveBeenCalledWith("profiles");
+    expect(insforge.from).toHaveBeenCalledWith("profiles");
   });
 
   it("handles race condition with unique constraint violation", async () => {
@@ -113,27 +113,27 @@ describe("ensureProfile", () => {
       avatar_url: null,
     };
 
-    const supabase = createMockSupabase({
+    const insforge = createMockInsForge({
       selectResult: { data: null, error: { code: "PGRST116", message: "not found" } },
       insertResult: { data: null, error: { code: "23505", message: "duplicate key" } },
       retrySelectResult: { data: raceProfile, error: null },
     });
 
     const user = createMockUser();
-    const result = await ensureProfile(supabase, user);
+    const result = await ensureProfile(insforge, user);
 
     expect(result).toEqual(raceProfile);
   });
 
   it("throws error when insert fails with non-unique-constraint error", async () => {
-    const supabase = createMockSupabase({
+    const insforge = createMockInsForge({
       selectResult: { data: null, error: { code: "PGRST116", message: "not found" } },
       insertResult: { data: null, error: { code: "42P01", message: "relation does not exist" } },
     });
 
     const user = createMockUser();
 
-    await expect(ensureProfile(supabase, user)).rejects.toThrow(
+    await expect(ensureProfile(insforge, user)).rejects.toThrow(
       "Failed to ensure profile for user user-123"
     );
   });

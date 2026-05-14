@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/insforge/server";
 import { createSemanticLayerService } from "@/lib/semantic/semantic-layer-service";
 import { hasPermission, resolveWorkspaceRole } from "@/lib/rbac/rbac-middleware";
 
@@ -9,11 +9,11 @@ import { hasPermission, resolveWorkspaceRole } from "@/lib/rbac/rbac-middleware"
  * Requires analyst+ role.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const supabase = createClient();
+  const insforge = createClient();
   const {
     data: { user },
     error: authError,
-  } = await supabase.auth.getUser();
+  } = await insforge.auth.getUser();
 
   if (authError || !user) {
     return NextResponse.json(
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const role = await resolveWorkspaceRole(supabase, user.id, workspaceId);
+  const role = await resolveWorkspaceRole(insforge, user.id, workspaceId);
   if (!role) {
     return NextResponse.json(
       { error: "Forbidden", message: "You are not a member of this workspace" },
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const service = createSemanticLayerService(supabase);
+    const service = createSemanticLayerService(insforge);
     const terms = await service.getGlossaryTerms(workspaceId);
     return NextResponse.json({ terms });
   } catch (error) {
@@ -76,11 +76,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * Body: { name, definition, relatedMetricIds?, relatedEntityIds? }
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const supabase = createClient();
+  const insforge = createClient();
   const {
     data: { user },
     error: authError,
-  } = await supabase.auth.getUser();
+  } = await insforge.auth.getUser();
 
   if (authError || !user) {
     return NextResponse.json(
@@ -104,7 +104,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const role = await resolveWorkspaceRole(supabase, user.id, workspaceId);
+  const role = await resolveWorkspaceRole(insforge, user.id, workspaceId);
   if (!role) {
     return NextResponse.json(
       { error: "Forbidden", message: "You are not a member of this workspace" },
@@ -148,7 +148,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const service = createSemanticLayerService(supabase);
+    const service = createSemanticLayerService(insforge);
     const term = await service.createGlossaryTerm(workspaceId, {
       name: body.name,
       definition: body.definition,

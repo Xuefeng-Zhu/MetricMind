@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { loadFullDemoDataset } from "./demo-loader";
 
-// Mock Supabase client
-function createMockSupabase() {
+// Mock InsForge client
+function createMockInsForge() {
   let insertCallCount = 0;
 
   const mockSingle = vi.fn();
@@ -61,15 +61,15 @@ function createMockSupabase() {
 }
 
 describe("loadFullDemoDataset", () => {
-  let mockSupabase: ReturnType<typeof createMockSupabase>;
+  let mockInsForge: ReturnType<typeof createMockInsForge>;
 
   beforeEach(() => {
-    mockSupabase = createMockSupabase();
+    mockInsForge = createMockInsForge();
   });
 
   it("should create data source records for all 6 demo tables", async () => {
     const result = await loadFullDemoDataset(
-      mockSupabase.client,
+      mockInsForge.client,
       "workspace-123",
       "user-456"
     );
@@ -87,26 +87,26 @@ describe("loadFullDemoDataset", () => {
 
   it("should create semantic entities for each demo table", async () => {
     const result = await loadFullDemoDataset(
-      mockSupabase.client,
+      mockInsForge.client,
       "workspace-123",
       "user-456"
     );
 
     expect(result.entityIds).toHaveLength(6);
     // Verify semantic_entities were inserted
-    expect(mockSupabase.insertedData["semantic_entities"]).toHaveLength(6);
+    expect(mockInsForge.insertedData["semantic_entities"]).toHaveLength(6);
   });
 
   it("should create all 8 pre-configured metrics", async () => {
     const result = await loadFullDemoDataset(
-      mockSupabase.client,
+      mockInsForge.client,
       "workspace-123",
       "user-456"
     );
 
     expect(result.metricIds).toHaveLength(8);
     // Verify metrics were inserted with correct names
-    const metricNames = mockSupabase.insertedData["metrics"].map(
+    const metricNames = mockInsForge.insertedData["metrics"].map(
       (m: unknown) => (m as Record<string, unknown>).name
     );
     expect(metricNames).toContain("MRR");
@@ -121,13 +121,13 @@ describe("loadFullDemoDataset", () => {
 
   it("should create glossary terms for key business concepts", async () => {
     const result = await loadFullDemoDataset(
-      mockSupabase.client,
+      mockInsForge.client,
       "workspace-123",
       "user-456"
     );
 
     expect(result.glossaryTermIds).toHaveLength(8);
-    const termNames = mockSupabase.insertedData["glossary_terms"].map(
+    const termNames = mockInsForge.insertedData["glossary_terms"].map(
       (t: unknown) => (t as Record<string, unknown>).name
     );
     expect(termNames).toContain("MRR");
@@ -139,13 +139,13 @@ describe("loadFullDemoDataset", () => {
 
   it("should create four demo dashboards", async () => {
     const result = await loadFullDemoDataset(
-      mockSupabase.client,
+      mockInsForge.client,
       "workspace-123",
       "user-456"
     );
 
     expect(result.dashboardIds).toHaveLength(4);
-    const dashNames = mockSupabase.insertedData["dashboards"].map(
+    const dashNames = mockInsForge.insertedData["dashboards"].map(
       (d: unknown) => (d as Record<string, unknown>).name
     );
     expect(dashNames).toContain("Executive Overview");
@@ -155,9 +155,9 @@ describe("loadFullDemoDataset", () => {
   });
 
   it("should create KPI widgets on the Executive Overview dashboard", async () => {
-    await loadFullDemoDataset(mockSupabase.client, "workspace-123", "user-456");
+    await loadFullDemoDataset(mockInsForge.client, "workspace-123", "user-456");
 
-    const widgets = mockSupabase.insertedData["widgets"];
+    const widgets = mockInsForge.insertedData["widgets"];
     expect(widgets).toBeDefined();
     expect(widgets.length).toBeGreaterThanOrEqual(4);
 
@@ -168,23 +168,23 @@ describe("loadFullDemoDataset", () => {
   });
 
   it("should create dimensions and measures for entities", async () => {
-    await loadFullDemoDataset(mockSupabase.client, "workspace-123", "user-456");
+    await loadFullDemoDataset(mockInsForge.client, "workspace-123", "user-456");
 
     // Dimensions should be created for all entities
-    const dimensions = mockSupabase.insertedData["dimensions"];
+    const dimensions = mockInsForge.insertedData["dimensions"];
     expect(dimensions).toBeDefined();
     expect(dimensions.length).toBeGreaterThan(0);
 
     // Measures should be created for subscriptions, invoices, and payments
-    const measures = mockSupabase.insertedData["measures"];
+    const measures = mockInsForge.insertedData["measures"];
     expect(measures).toBeDefined();
     expect(measures.length).toBe(3); // mrr_cents, amount_cents (invoices), amount_cents (payments)
   });
 
   it("should mark all metrics as certified", async () => {
-    await loadFullDemoDataset(mockSupabase.client, "workspace-123", "user-456");
+    await loadFullDemoDataset(mockInsForge.client, "workspace-123", "user-456");
 
-    const metrics = mockSupabase.insertedData["metrics"];
+    const metrics = mockInsForge.insertedData["metrics"];
     for (const metric of metrics) {
       const m = metric as Record<string, unknown>;
       expect(m.certified).toBe(true);
@@ -194,30 +194,30 @@ describe("loadFullDemoDataset", () => {
   });
 
   it("should set workspace_id on all created resources", async () => {
-    await loadFullDemoDataset(mockSupabase.client, "workspace-123", "user-456");
+    await loadFullDemoDataset(mockInsForge.client, "workspace-123", "user-456");
 
     // Check data sources
-    for (const ds of mockSupabase.insertedData["data_sources"]) {
+    for (const ds of mockInsForge.insertedData["data_sources"]) {
       expect((ds as Record<string, unknown>).workspace_id).toBe("workspace-123");
     }
 
     // Check entities
-    for (const entity of mockSupabase.insertedData["semantic_entities"]) {
+    for (const entity of mockInsForge.insertedData["semantic_entities"]) {
       expect((entity as Record<string, unknown>).workspace_id).toBe("workspace-123");
     }
 
     // Check metrics
-    for (const metric of mockSupabase.insertedData["metrics"]) {
+    for (const metric of mockInsForge.insertedData["metrics"]) {
       expect((metric as Record<string, unknown>).workspace_id).toBe("workspace-123");
     }
 
     // Check glossary terms
-    for (const term of mockSupabase.insertedData["glossary_terms"]) {
+    for (const term of mockInsForge.insertedData["glossary_terms"]) {
       expect((term as Record<string, unknown>).workspace_id).toBe("workspace-123");
     }
 
     // Check dashboards
-    for (const dash of mockSupabase.insertedData["dashboards"]) {
+    for (const dash of mockInsForge.insertedData["dashboards"]) {
       expect((dash as Record<string, unknown>).workspace_id).toBe("workspace-123");
     }
   });

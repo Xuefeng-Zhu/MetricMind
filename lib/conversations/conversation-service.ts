@@ -8,7 +8,7 @@
  * Requirements: 22.1, 22.3
  */
 
-import { SupabaseClient } from '@supabase/supabase-js';
+import { InsForgeDatabaseClient } from '@/lib/insforge/types';
 
 // --- Interfaces ---
 
@@ -48,16 +48,16 @@ export interface ConversationService {
 /**
  * Creates a ConversationService instance.
  *
- * @param supabase - Supabase client for database operations
+ * @param insforge - InsForge client for database operations
  */
-export function createConversationService(supabase: SupabaseClient): ConversationService {
+export function createConversationService(insforge: InsForgeDatabaseClient): ConversationService {
   return {
     async createConversation(
       workspaceId: string,
       userId: string,
       title?: string
     ): Promise<Conversation> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from('conversations')
         .insert({
           workspace_id: workspaceId,
@@ -75,7 +75,7 @@ export function createConversationService(supabase: SupabaseClient): Conversatio
     },
 
     async getConversations(workspaceId: string, userId: string): Promise<Conversation[]> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from('conversations')
         .select('*')
         .eq('workspace_id', workspaceId)
@@ -90,7 +90,7 @@ export function createConversationService(supabase: SupabaseClient): Conversatio
     },
 
     async getConversation(conversationId: string): Promise<Conversation> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from('conversations')
         .select('*')
         .eq('id', conversationId)
@@ -109,7 +109,7 @@ export function createConversationService(supabase: SupabaseClient): Conversatio
       content: string,
       metadata?: Record<string, unknown>
     ): Promise<Message> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from('messages')
         .insert({
           conversation_id: conversationId,
@@ -125,7 +125,7 @@ export function createConversationService(supabase: SupabaseClient): Conversatio
       }
 
       // Update the conversation's updated_at timestamp
-      await supabase
+      await insforge
         .from('conversations')
         .update({ updated_at: new Date().toISOString() })
         .eq('id', conversationId);
@@ -134,7 +134,7 @@ export function createConversationService(supabase: SupabaseClient): Conversatio
     },
 
     async getMessages(conversationId: string): Promise<Message[]> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from('messages')
         .select('*')
         .eq('conversation_id', conversationId)

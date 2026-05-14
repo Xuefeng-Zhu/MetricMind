@@ -11,7 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { withRBAC, RBACContext } from '@/lib/rbac/rbac-middleware';
-import { createClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/insforge/server';
 import { createQueryPlanner } from '@/lib/query/query-planner';
 
 async function handler(req: NextRequest, context: RBACContext): Promise<NextResponse> {
@@ -46,10 +46,10 @@ async function handler(req: NextRequest, context: RBACContext): Promise<NextResp
   }
 
   try {
-    const supabase = createClient();
+    const insforge = createClient();
 
     // Load AI provider config for this workspace (if any)
-    const { data: aiConfig } = await supabase
+    const { data: aiConfig } = await insforge
       .from('ai_provider_configs')
       .select('endpoint_url, model_name, encrypted_api_key')
       .eq('workspace_id', workspaceId)
@@ -64,7 +64,7 @@ async function handler(req: NextRequest, context: RBACContext): Promise<NextResp
       : undefined;
 
     // Create query planner and process the question
-    const queryPlanner = createQueryPlanner(supabase, providerConfig);
+    const queryPlanner = createQueryPlanner(insforge, providerConfig);
 
     const result = await queryPlanner.processQuestion({
       question: question.trim(),
@@ -75,7 +75,7 @@ async function handler(req: NextRequest, context: RBACContext): Promise<NextResp
 
     // Audit log: query executed (non-blocking)
     try {
-      await supabase.from("audit_events").insert({
+      await insforge.from("audit_events").insert({
         workspace_id: workspaceId,
         actor_id: userId,
         action: "query.executed",

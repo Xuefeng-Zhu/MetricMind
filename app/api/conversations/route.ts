@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/insforge/server";
 import { createConversationService } from "@/lib/conversations/conversation-service";
 import { hasPermission, resolveWorkspaceRole } from "@/lib/rbac/rbac-middleware";
 
@@ -12,11 +12,11 @@ import { hasPermission, resolveWorkspaceRole } from "@/lib/rbac/rbac-middleware"
  * Requirements: 22.4
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const supabase = createClient();
+  const insforge = createClient();
   const {
     data: { user },
     error: authError,
-  } = await supabase.auth.getUser();
+  } = await insforge.auth.getUser();
 
   if (authError || !user) {
     return NextResponse.json(
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const role = await resolveWorkspaceRole(supabase, user.id, workspaceId);
+  const role = await resolveWorkspaceRole(insforge, user.id, workspaceId);
   if (!role) {
     return NextResponse.json(
       { error: "Forbidden", message: "You are not a member of this workspace" },
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const conversationService = createConversationService(supabase);
+    const conversationService = createConversationService(insforge);
     const conversations = await conversationService.getConversations(workspaceId, user.id);
     return NextResponse.json({ conversations });
   } catch (error) {
@@ -82,11 +82,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * Requirements: 22.1
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const supabase = createClient();
+  const insforge = createClient();
   const {
     data: { user },
     error: authError,
-  } = await supabase.auth.getUser();
+  } = await insforge.auth.getUser();
 
   if (authError || !user) {
     return NextResponse.json(
@@ -110,7 +110,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const role = await resolveWorkspaceRole(supabase, user.id, workspaceId);
+  const role = await resolveWorkspaceRole(insforge, user.id, workspaceId);
   if (!role) {
     return NextResponse.json(
       { error: "Forbidden", message: "You are not a member of this workspace" },
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const conversationService = createConversationService(supabase);
+    const conversationService = createConversationService(insforge);
     const conversation = await conversationService.createConversation(
       workspaceId,
       user.id,

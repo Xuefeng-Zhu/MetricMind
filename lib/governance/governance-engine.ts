@@ -13,7 +13,7 @@
  * Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 24.1, 24.2, 24.3, 24.4
  */
 
-import { SupabaseClient } from '@supabase/supabase-js';
+import { InsForgeDatabaseClient } from '@/lib/insforge/types';
 
 // --- Interfaces ---
 
@@ -254,12 +254,12 @@ function escapeRegex(str: string): string {
  * Log a security event to the audit_events table.
  */
 async function logSecurityEvent(
-  supabase: SupabaseClient,
+  insforge: InsForgeDatabaseClient,
   workspaceId: string,
   metadata: Record<string, unknown>
 ): Promise<void> {
   try {
-    await supabase.from('audit_events').insert({
+    await insforge.from('audit_events').insert({
       workspace_id: workspaceId,
       actor_id: metadata.actor_id || '00000000-0000-0000-0000-000000000000',
       action: 'security.violation',
@@ -278,12 +278,12 @@ async function logSecurityEvent(
 /**
  * Create a GovernanceEngine instance.
  *
- * The Supabase client is used for:
+ * The InsForge client is used for:
  * - Querying sql_policies table for allowlist/denylist patterns
  * - Querying metrics table for metric validation
  * - Inserting audit_events for security violations
  */
-export function createGovernanceEngine(supabase: SupabaseClient): GovernanceEngine {
+export function createGovernanceEngine(insforge: InsForgeDatabaseClient): GovernanceEngine {
   return {
     async validateSQL(sql: string, context: GovernanceContext): Promise<ValidationResult> {
       const errors: ValidationError[] = [];
@@ -305,7 +305,7 @@ export function createGovernanceEngine(supabase: SupabaseClient): GovernanceEngi
 
       // 5. Check workspace sql_policies from database (Requirement 10.1)
       try {
-        const { data: policies } = await supabase
+        const { data: policies } = await insforge
           .from('sql_policies')
           .select('policy_type, pattern')
           .eq('workspace_id', context.workspaceId)
@@ -346,7 +346,7 @@ export function createGovernanceEngine(supabase: SupabaseClient): GovernanceEngi
 
       // Log security event if query is rejected (Requirement 10.3)
       if (errors.length > 0) {
-        await logSecurityEvent(supabase, context.workspaceId, {
+        await logSecurityEvent(insforge, context.workspaceId, {
           sql: sql.substring(0, 500), // Truncate for safety
           errors: errors.map((e) => ({ code: e.code, message: e.message })),
           reason: 'sql_validation_failed',
@@ -362,7 +362,7 @@ export function createGovernanceEngine(supabase: SupabaseClient): GovernanceEngi
 
     async checkMetricReferences(sql: string, workspaceId: string): Promise<MetricValidation> {
       // Fetch all metrics for the workspace (Requirement 24.1)
-      const { data: metrics } = await supabase
+      const { data: metrics } = await insforge
         .from('metrics')
         .select('name')
         .eq('workspace_id', workspaceId);
@@ -404,7 +404,7 @@ export function createGovernanceEngine(supabase: SupabaseClient): GovernanceEngi
       const issues: HallucinationIssue[] = [];
 
       // Fetch all metrics with their formulas for the workspace (Requirement 24.2, 24.3)
-      const { data: metrics } = await supabase
+      const { data: metrics } = await insforge
         .from('metrics')
         .select('name, formula, certified')
         .eq('workspace_id', workspaceId);
@@ -472,7 +472,7 @@ export function createGovernanceEngine(supabase: SupabaseClient): GovernanceEngi
 
       // Log hallucination events if flagged (Requirement 24.2)
       if (issues.length > 0) {
-        await logSecurityEvent(supabase, workspaceId, {
+        await logSecurityEvent(insforge, workspaceId, {
           sql: response.sql.substring(0, 500),
           issues: issues.map((i) => ({ type: i.type, metricName: i.metricName })),
           reason: 'hallucination_detected',

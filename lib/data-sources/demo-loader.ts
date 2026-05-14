@@ -1,4 +1,4 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 import { createDataSourceService, DataSource } from "./data-source-service";
 
 /**
@@ -251,18 +251,18 @@ export interface DemoLoadResult {
  * 4. Glossary terms for key business concepts
  * 5. Four demo dashboards
  *
- * @param supabase - Authenticated Supabase client
+ * @param insforge - Authenticated InsForge client
  * @param workspaceId - Target workspace ID
  * @param userId - User ID for created_by fields
  * @returns IDs of all created resources
  */
 export async function loadFullDemoDataset(
-  supabase: SupabaseClient,
+  insforge: InsForgeDatabaseClient,
   workspaceId: string,
   userId: string
 ): Promise<DemoLoadResult> {
   // 1. Create data source records via the data source service
-  const dataSourceService = createDataSourceService(supabase);
+  const dataSourceService = createDataSourceService(insforge);
   const dataSources = await dataSourceService.loadDemoDataset(workspaceId);
 
   // Build a map of table name -> data source ID for entity creation
@@ -280,7 +280,7 @@ export async function loadFullDemoDataset(
     if (!dataSourceId) continue;
 
     // Create the entity
-    const { data: entity, error: entityError } = await supabase
+    const { data: entity, error: entityError } = await insforge
       .from("semantic_entities")
       .insert({
         workspace_id: workspaceId,
@@ -310,7 +310,7 @@ export async function loadFullDemoDataset(
         source_column: dim.source_column,
       }));
 
-      const { error: dimError } = await supabase
+      const { error: dimError } = await insforge
         .from("dimensions")
         .insert(dimensionInserts);
 
@@ -332,7 +332,7 @@ export async function loadFullDemoDataset(
         default_aggregation: meas.aggregation,
       }));
 
-      const { error: measError } = await supabase
+      const { error: measError } = await insforge
         .from("measures")
         .insert(measureInserts);
 
@@ -348,7 +348,7 @@ export async function loadFullDemoDataset(
   const metricIds: string[] = [];
 
   for (const metricDef of DEMO_METRICS) {
-    const { data: metric, error: metricError } = await supabase
+    const { data: metric, error: metricError } = await insforge
       .from("metrics")
       .insert({
         workspace_id: workspaceId,
@@ -376,7 +376,7 @@ export async function loadFullDemoDataset(
   const glossaryTermIds: string[] = [];
 
   for (const termDef of DEMO_GLOSSARY_TERMS) {
-    const { data: term, error: termError } = await supabase
+    const { data: term, error: termError } = await insforge
       .from("glossary_terms")
       .insert({
         workspace_id: workspaceId,
@@ -401,7 +401,7 @@ export async function loadFullDemoDataset(
   const dashboardIds: string[] = [];
 
   for (const dashDef of DEMO_DASHBOARDS) {
-    const { data: dashboard, error: dashError } = await supabase
+    const { data: dashboard, error: dashError } = await insforge
       .from("dashboards")
       .insert({
         workspace_id: workspaceId,
@@ -462,7 +462,7 @@ export async function loadFullDemoDataset(
     },
   ];
 
-  const { error: widgetError } = await supabase
+  const { error: widgetError } = await insforge
     .from("widgets")
     .insert(kpiWidgets);
 

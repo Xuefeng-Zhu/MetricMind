@@ -8,6 +8,9 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ensureProfile } from "@/lib/auth/ensure-profile";
+import { createClient } from "@/lib/insforge/client";
+import { useAuthStore } from "@/stores/auth-store";
 
 const signupSchema = z.object({
   fullName: z.string().min(1, "Full name is required"),
@@ -20,15 +23,19 @@ type SignupFormData = z.infer<typeof signupSchema>;
 
 export default function SignupPage() {
   const router = useRouter();
+  const { setUser, setSession } = useAuthStore();
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [workspaceName, setWorkspaceName] = useState("");
   const [errors, setErrors] = useState<Partial<Record<keyof SignupFormData, string>>>({});
+  const [formMessage, setFormMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setErrors({});
+    setFormMessage("");
 
     const result = signupSchema.safeParse({ fullName, email, password, workspaceName });
 
@@ -44,13 +51,62 @@ export default function SignupPage() {
       return;
     }
 
-    router.push("/app");
+    setIsSubmitting(true);
+
+    try {
+      const insforge = createClient();
+      const { data, error } = await insforge.auth.signUp({
+        email: email.trim(),
+        password,
+        name: fullName.trim(),
+        redirectTo: `${window.location.origin}/login`,
+      });
+
+      if (error) {
+        setFormMessage(error.message);
+        return;
+      }
+
+      if (data?.requireEmailVerification || !data?.accessToken || !data.refreshToken || !data.user) {
+        setFormMessage("Check your email to verify your account, then log in.");
+        return;
+      }
+
+      const session = {
+        user: data.user,
+        access_token: data.accessToken,
+        refresh_token: data.refreshToken,
+      };
+
+      const sessionResponse = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
+        }),
+      });
+
+      if (!sessionResponse.ok) {
+        setFormMessage("Account created, but could not persist the session.");
+        return;
+      }
+
+      await ensureProfile(insforge, data.user);
+      setUser(data.user);
+      setSession(session);
+      router.push("/app");
+    } catch (err) {
+      setFormMessage(err instanceof Error ? err.message : "Unable to create account.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
-    <main className="grid min-h-screen grid-cols-[45%_55%]">
+    <main className="min-h-screen bg-white lg:grid lg:grid-cols-[45%_55%]">
       {/* Left branding panel */}
-      <div className="relative flex flex-col justify-between overflow-hidden bg-[#1E293B] p-10 text-white">
+      <div className="relative hidden flex-col justify-between overflow-hidden bg-[#1E293B] p-10 text-white lg:flex">
         {/* Decorative gradient circles */}
         <div className="pointer-events-none absolute -left-20 -top-20 h-72 w-72 rounded-full bg-blue-500/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-32 -right-20 h-96 w-96 rounded-full bg-purple-500/20 blur-3xl" />
@@ -104,7 +160,7 @@ export default function SignupPage() {
       </div>
 
       {/* Right form panel */}
-      <div className="flex items-center justify-center bg-white p-10">
+      <div className="flex min-h-screen items-center justify-center bg-white px-6 py-10 sm:p-10">
         <div className="w-full max-w-md space-y-8">
           {/* Header */}
           <div className="space-y-2">
@@ -168,6 +224,15 @@ export default function SignupPage() {
 
           {/* Signup Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
+            {formMessage && (
+              <div
+                className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700"
+                role="status"
+              >
+                {formMessage}
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="fullName">Full name</Label>
               <Input
@@ -244,8 +309,8 @@ export default function SignupPage() {
               )}
             </div>
 
-            <Button type="submit" className="w-full">
-              Create Account
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Creating..." : "Create Account"}
             </Button>
           </form>
 

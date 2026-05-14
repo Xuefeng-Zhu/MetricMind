@@ -12,7 +12,7 @@
  * Requirements: 14.1, 14.2
  */
 
-import { SupabaseClient } from '@supabase/supabase-js';
+import { InsForgeDatabaseClient } from '@/lib/insforge/types';
 
 // --- Types ---
 
@@ -260,9 +260,9 @@ interface LineageRecord {
 /**
  * Creates a LineageService instance.
  *
- * @param supabase - Supabase client for database operations
+ * @param insforge - InsForge client for database operations
  */
-export function createLineageService(supabase: SupabaseClient): LineageService {
+export function createLineageService(insforge: InsForgeDatabaseClient): LineageService {
   /**
    * Fetches related data for lineage records to build the graph.
    */
@@ -275,25 +275,25 @@ export function createLineageService(supabase: SupabaseClient): LineageService {
     // Fetch all related data in parallel
     const [dsResult, entityResult, metricResult, queryRunResult] = await Promise.all([
       dataSourceIds.length > 0
-        ? supabase
+        ? insforge
             .from('data_sources')
             .select('id, name, type, row_count')
             .in('id', dataSourceIds)
         : { data: [], error: null },
       entityIds.length > 0
-        ? supabase
+        ? insforge
             .from('semantic_entities')
             .select('id, name, description')
             .in('id', entityIds)
         : { data: [], error: null },
       metricIds.length > 0
-        ? supabase
+        ? insforge
             .from('metrics')
             .select('id, name, formula, certified')
             .in('id', metricIds)
         : { data: [], error: null },
       queryRunIds.length > 0
-        ? supabase
+        ? insforge
             .from('query_runs')
             .select('id, sql, execution_time_ms, row_count, result_sample')
             .in('id', queryRunIds)
@@ -327,7 +327,7 @@ export function createLineageService(supabase: SupabaseClient): LineageService {
   return {
     async buildLineageGraph(traceId: string, workspaceId: string): Promise<LineageGraph> {
       // Fetch lineage records for this AI trace
-      const { data: records, error } = await supabase
+      const { data: records, error } = await insforge
         .from('lineage_records')
         .select('id, workspace_id, ai_trace_id, data_source_id, dataset_column_id, entity_id, metric_id, query_run_id, sql_fragment, result_summary, created_at')
         .eq('ai_trace_id', traceId)
@@ -349,7 +349,7 @@ export function createLineageService(supabase: SupabaseClient): LineageService {
 
     async getLineageForInsight(messageId: string): Promise<LineageGraph> {
       // Look up the AI trace associated with this message
-      const { data: traces, error: traceError } = await supabase
+      const { data: traces, error: traceError } = await insforge
         .from('ai_traces')
         .select('id, workspace_id')
         .eq('message_id', messageId);
@@ -365,7 +365,7 @@ export function createLineageService(supabase: SupabaseClient): LineageService {
       const trace = traces[0] as { id: string; workspace_id: string };
 
       // Fetch lineage records for this trace
-      const { data: records, error } = await supabase
+      const { data: records, error } = await insforge
         .from('lineage_records')
         .select('id, workspace_id, ai_trace_id, data_source_id, dataset_column_id, entity_id, metric_id, query_run_id, sql_fragment, result_summary, created_at')
         .eq('ai_trace_id', trace.id);
@@ -391,7 +391,7 @@ export function createLineageService(supabase: SupabaseClient): LineageService {
 
       switch (nodeType) {
         case 'data_source': {
-          const { data, error } = await supabase
+          const { data, error } = await insforge
             .from('data_sources')
             .select('id, name, type, row_count')
             .eq('id', actualId)
@@ -415,7 +415,7 @@ export function createLineageService(supabase: SupabaseClient): LineageService {
 
         case 'dataset': {
           // Dataset uses the same data source ID
-          const { data, error } = await supabase
+          const { data, error } = await insforge
             .from('data_sources')
             .select('id, name, type, row_count')
             .eq('id', actualId)
@@ -438,7 +438,7 @@ export function createLineageService(supabase: SupabaseClient): LineageService {
         }
 
         case 'entity': {
-          const { data: entity, error } = await supabase
+          const { data: entity, error } = await insforge
             .from('semantic_entities')
             .select('id, name, description')
             .eq('id', actualId)
@@ -450,8 +450,8 @@ export function createLineageService(supabase: SupabaseClient): LineageService {
 
           // Fetch dimensions and measures for this entity
           const [dimResult, measureResult] = await Promise.all([
-            supabase.from('dimensions').select('name').eq('entity_id', actualId),
-            supabase.from('measures').select('name').eq('entity_id', actualId),
+            insforge.from('dimensions').select('name').eq('entity_id', actualId),
+            insforge.from('measures').select('name').eq('entity_id', actualId),
           ]);
 
           const dimensions = (dimResult.data ?? []).map((d: { name: string }) => d.name);
@@ -471,7 +471,7 @@ export function createLineageService(supabase: SupabaseClient): LineageService {
         }
 
         case 'metric': {
-          const { data: metric, error } = await supabase
+          const { data: metric, error } = await insforge
             .from('metrics')
             .select('id, name, formula, certified, certified_by')
             .eq('id', actualId)
@@ -484,7 +484,7 @@ export function createLineageService(supabase: SupabaseClient): LineageService {
           // If certified, fetch the certifier's display name
           let certifiedBy: string | undefined;
           if (metric.certified && metric.certified_by) {
-            const { data: profile } = await supabase
+            const { data: profile } = await insforge
               .from('profiles')
               .select('display_name')
               .eq('id', metric.certified_by)
@@ -506,7 +506,7 @@ export function createLineageService(supabase: SupabaseClient): LineageService {
         }
 
         case 'sql_query': {
-          const { data: queryRun, error } = await supabase
+          const { data: queryRun, error } = await insforge
             .from('query_runs')
             .select('id, sql, execution_time_ms')
             .eq('id', actualId)
@@ -528,7 +528,7 @@ export function createLineageService(supabase: SupabaseClient): LineageService {
         }
 
         case 'result': {
-          const { data: queryRun, error } = await supabase
+          const { data: queryRun, error } = await insforge
             .from('query_runs')
             .select('id, row_count, result_sample')
             .eq('id', actualId)
@@ -561,7 +561,7 @@ export function createLineageService(supabase: SupabaseClient): LineageService {
     },
 
     async createLineageRecords(input: CreateLineageInput): Promise<void> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from('lineage_records')
         .insert({
           workspace_id: input.workspaceId,

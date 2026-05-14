@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const mockGetUser = vi.hoisted(() => vi.fn());
 const mockRedirect = vi.hoisted(() =>
   vi.fn().mockImplementation((url: URL) => ({
     status: 307,
     headers: new Headers({ location: url.toString() }),
+    cookies: { set: vi.fn() },
   }))
 );
 const mockNext = vi.hoisted(() =>
@@ -22,23 +22,22 @@ vi.mock("next/server", () => ({
   },
 }));
 
-vi.mock("@supabase/ssr", () => ({
-  createServerClient: vi.fn(() => ({
-    auth: {
-      getUser: mockGetUser,
-    },
-  })),
-}));
-
+import {
+  INSFORGE_ACCESS_COOKIE,
+  INSFORGE_REFRESH_COOKIE,
+} from "./lib/insforge/auth-cookies";
 import { middleware, config } from "./middleware";
 
-function createMockRequest(pathname: string) {
+function createMockRequest(pathname: string, cookies: Record<string, string> = {}) {
   const url = new URL(pathname, "http://localhost:3000");
   return {
     nextUrl: url,
     url: url.toString(),
     cookies: {
-      getAll: () => [],
+      get: (name: string) =>
+        cookies[name] ? { name, value: cookies[name] } : undefined,
+      getAll: () =>
+        Object.entries(cookies).map(([name, value]) => ({ name, value })),
       set: vi.fn(),
     },
     headers: new Headers(),
@@ -48,6 +47,9 @@ function createMockRequest(pathname: string) {
 describe("Auth Middleware", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.NEXT_PUBLIC_INSFORGE_URL = "https://test.insforge.app";
+    process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY = "anon-key";
+    vi.stubGlobal("fetch", vi.fn());
     mockNext.mockImplementation(() => ({
       status: 200,
       headers: new Headers(),
@@ -56,6 +58,7 @@ describe("Auth Middleware", () => {
     mockRedirect.mockImplementation((url: URL) => ({
       status: 307,
       headers: new Headers({ location: url.toString() }),
+      cookies: { set: vi.fn() },
     }));
   });
 
@@ -80,8 +83,6 @@ describe("Auth Middleware", () => {
 
   describe("protected routes (/app/*)", () => {
     it("should redirect unauthenticated users to /login", async () => {
-      mockGetUser.mockResolvedValue({ data: { user: null } });
-
       const request = createMockRequest("/app/dashboards");
       await middleware(request);
 
@@ -91,8 +92,6 @@ describe("Auth Middleware", () => {
     });
 
     it("should redirect unauthenticated users from /app root to /login", async () => {
-      mockGetUser.mockResolvedValue({ data: { user: null } });
-
       const request = createMockRequest("/app");
       await middleware(request);
 
@@ -102,8 +101,6 @@ describe("Auth Middleware", () => {
     });
 
     it("should redirect unauthenticated users from nested /app routes to /login", async () => {
-      mockGetUser.mockResolvedValue({ data: { user: null } });
-
       const request = createMockRequest("/app/semantic-layer/metrics");
       await middleware(request);
 
@@ -113,25 +110,75 @@ describe("Auth Middleware", () => {
     });
 
     it("should allow authenticated users to access /app routes", async () => {
-      mockGetUser.mockResolvedValue({
-        data: { user: { id: "user-123", email: "test@example.com" } },
-      });
+      vi.mocked(fetch).mockResolvedValue(new Response("{}", { status: 200 }));
 
-      const request = createMockRequest("/app/dashboards");
+      const request = createMockRequest("/app/dashboards", {
+        [INSFORGE_ACCESS_COOKIE]: "access-token",
+      });
       await middleware(request);
 
       expect(mockRedirect).not.toHaveBeenCalled();
     });
 
     it("should allow authenticated users to access nested /app routes", async () => {
-      mockGetUser.mockResolvedValue({
-        data: { user: { id: "user-123", email: "test@example.com" } },
-      });
+      vi.mocked(fetch).mockResolvedValue(new Response("{}", { status: 200 }));
 
-      const request = createMockRequest("/app/ask/conversation-1");
+      const request = createMockRequest("/app/ask/conversation-1", {
+        [INSFORGE_ACCESS_COOKIE]: "access-token",
+      });
       await middleware(request);
 
       expect(mockRedirect).not.toHaveBeenCalled();
+    });
+
+    it("should refresh an expired access token when a refresh token exists", async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(new Response("{}", { status: 401 }))
+        .mockResolvedValueOnce(
+          Response.json({
+            accessToken: "new-access-token",
+            refreshToken: "new-refresh-token",
+            user: { id: "user-123" },
+          })
+        );
+
+      const request = createMockRequest("/app", {
+        [INSFORGE_ACCESS_COOKIE]: "expired-access-token",
+        [INSFORGE_REFRESH_COOKIE]: "refresh-token",
+      });
+      await middleware(request);
+
+      expect(mockRedirect).not.toHaveBeenCalled();
+      expect(mockNext).toHaveBeenCalled();
+    });
+
+    it("should redirect instead of throwing when the user fetch fails", async () => {
+      vi.mocked(fetch).mockRejectedValue(new TypeError("network failed"));
+
+      const request = createMockRequest("/app", {
+        [INSFORGE_ACCESS_COOKIE]: "access-token",
+      });
+
+      await expect(middleware(request)).resolves.toMatchObject({
+        status: 307,
+      });
+      expect(mockRedirect).toHaveBeenCalled();
+    });
+
+    it("should redirect instead of throwing when the refresh fetch fails", async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(new Response("{}", { status: 401 }))
+        .mockRejectedValueOnce(new TypeError("network failed"));
+
+      const request = createMockRequest("/app", {
+        [INSFORGE_ACCESS_COOKIE]: "expired-access-token",
+        [INSFORGE_REFRESH_COOKIE]: "refresh-token",
+      });
+
+      await expect(middleware(request)).resolves.toMatchObject({
+        status: 307,
+      });
+      expect(mockRedirect).toHaveBeenCalled();
     });
   });
 
@@ -143,7 +190,7 @@ describe("Auth Middleware", () => {
 
       expect(mockNext).toHaveBeenCalled();
       expect(mockRedirect).not.toHaveBeenCalled();
-      expect(mockGetUser).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
     });
 
     it("should not be triggered for public routes due to matcher config", () => {

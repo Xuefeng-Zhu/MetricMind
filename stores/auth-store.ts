@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { User, Session } from "@supabase/supabase-js";
+import { User, Session } from "@/lib/insforge/types";
 
 export interface WorkspaceContext {
   workspaceId: string;
@@ -40,7 +40,7 @@ export const useAuthStore = create<AuthState>()(
     {
       name: "auth-store",
       // Only persist workspaceContext across page reloads.
-      // User and session are managed by Supabase Auth and refreshed on mount.
+      // User and session are managed by InsForge Auth and refreshed on mount.
       partialize: (state) => ({
         workspaceContext: state.workspaceContext,
       }),

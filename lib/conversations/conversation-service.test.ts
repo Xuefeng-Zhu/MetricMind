@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createConversationService, messagesToAIContext, Message } from './conversation-service';
 
-// Mock Supabase client
-function createMockSupabase() {
+// Mock InsForge client
+function createMockInsForge() {
   const mockChain = {
     insert: vi.fn().mockReturnThis(),
     select: vi.fn().mockReturnThis(),
@@ -12,20 +12,20 @@ function createMockSupabase() {
     update: vi.fn().mockReturnThis(),
   };
 
-  const supabase = {
+  const insforge = {
     from: vi.fn().mockReturnValue(mockChain),
   };
 
-  return { supabase, mockChain };
+  return { insforge, mockChain };
 }
 
 describe('createConversationService', () => {
-  let supabase: ReturnType<typeof createMockSupabase>['supabase'];
-  let mockChain: ReturnType<typeof createMockSupabase>['mockChain'];
+  let insforge: ReturnType<typeof createMockInsForge>['insforge'];
+  let mockChain: ReturnType<typeof createMockInsForge>['mockChain'];
 
   beforeEach(() => {
-    const mock = createMockSupabase();
-    supabase = mock.supabase;
+    const mock = createMockInsForge();
+    insforge = mock.insforge;
     mockChain = mock.mockChain;
   });
 
@@ -42,11 +42,11 @@ describe('createConversationService', () => {
 
       mockChain.single.mockResolvedValue({ data: conversation, error: null });
 
-      const service = createConversationService(supabase as any);
+      const service = createConversationService(insforge as any);
       const result = await service.createConversation('ws-1', 'user-1');
 
       expect(result).toEqual(conversation);
-      expect(supabase.from).toHaveBeenCalledWith('conversations');
+      expect(insforge.from).toHaveBeenCalledWith('conversations');
       expect(mockChain.insert).toHaveBeenCalledWith({
         workspace_id: 'ws-1',
         user_id: 'user-1',
@@ -66,7 +66,7 @@ describe('createConversationService', () => {
 
       mockChain.single.mockResolvedValue({ data: conversation, error: null });
 
-      const service = createConversationService(supabase as any);
+      const service = createConversationService(insforge as any);
       const result = await service.createConversation('ws-1', 'user-1', 'Revenue Analysis');
 
       expect(result).toEqual(conversation);
@@ -83,7 +83,7 @@ describe('createConversationService', () => {
         error: { message: 'Database error' },
       });
 
-      const service = createConversationService(supabase as any);
+      const service = createConversationService(insforge as any);
 
       await expect(service.createConversation('ws-1', 'user-1')).rejects.toThrow(
         'Failed to create conversation: Database error'
@@ -114,11 +114,11 @@ describe('createConversationService', () => {
 
       mockChain.order.mockResolvedValue({ data: conversations, error: null });
 
-      const service = createConversationService(supabase as any);
+      const service = createConversationService(insforge as any);
       const result = await service.getConversations('ws-1', 'user-1');
 
       expect(result).toEqual(conversations);
-      expect(supabase.from).toHaveBeenCalledWith('conversations');
+      expect(insforge.from).toHaveBeenCalledWith('conversations');
       expect(mockChain.eq).toHaveBeenCalledWith('workspace_id', 'ws-1');
       expect(mockChain.eq).toHaveBeenCalledWith('user_id', 'user-1');
       expect(mockChain.order).toHaveBeenCalledWith('updated_at', { ascending: false });
@@ -127,7 +127,7 @@ describe('createConversationService', () => {
     it('should return empty array when no conversations exist', async () => {
       mockChain.order.mockResolvedValue({ data: [], error: null });
 
-      const service = createConversationService(supabase as any);
+      const service = createConversationService(insforge as any);
       const result = await service.getConversations('ws-1', 'user-1');
 
       expect(result).toEqual([]);
@@ -139,7 +139,7 @@ describe('createConversationService', () => {
         error: { message: 'Connection failed' },
       });
 
-      const service = createConversationService(supabase as any);
+      const service = createConversationService(insforge as any);
 
       await expect(service.getConversations('ws-1', 'user-1')).rejects.toThrow(
         'Failed to fetch conversations: Connection failed'
@@ -160,11 +160,11 @@ describe('createConversationService', () => {
 
       mockChain.single.mockResolvedValue({ data: conversation, error: null });
 
-      const service = createConversationService(supabase as any);
+      const service = createConversationService(insforge as any);
       const result = await service.getConversation('conv-1');
 
       expect(result).toEqual(conversation);
-      expect(supabase.from).toHaveBeenCalledWith('conversations');
+      expect(insforge.from).toHaveBeenCalledWith('conversations');
       expect(mockChain.eq).toHaveBeenCalledWith('id', 'conv-1');
     });
 
@@ -174,7 +174,7 @@ describe('createConversationService', () => {
         error: { message: 'Row not found' },
       });
 
-      const service = createConversationService(supabase as any);
+      const service = createConversationService(insforge as any);
 
       await expect(service.getConversation('nonexistent')).rejects.toThrow(
         'Failed to fetch conversation: Row not found'
@@ -200,15 +200,15 @@ describe('createConversationService', () => {
         update: vi.fn().mockReturnThis(),
         eq: vi.fn().mockResolvedValue({ data: null, error: null }),
       };
-      supabase.from
+      insforge.from
         .mockReturnValueOnce(mockChain) // for insert
         .mockReturnValueOnce(updateChain); // for update
 
-      const service = createConversationService(supabase as any);
+      const service = createConversationService(insforge as any);
       const result = await service.addMessage('conv-1', 'user', 'What is our MRR?');
 
       expect(result).toEqual(message);
-      expect(supabase.from).toHaveBeenCalledWith('messages');
+      expect(insforge.from).toHaveBeenCalledWith('messages');
       expect(mockChain.insert).toHaveBeenCalledWith({
         conversation_id: 'conv-1',
         role: 'user',
@@ -233,11 +233,11 @@ describe('createConversationService', () => {
         update: vi.fn().mockReturnThis(),
         eq: vi.fn().mockResolvedValue({ data: null, error: null }),
       };
-      supabase.from
+      insforge.from
         .mockReturnValueOnce(mockChain)
         .mockReturnValueOnce(updateChain);
 
-      const service = createConversationService(supabase as any);
+      const service = createConversationService(insforge as any);
       const result = await service.addMessage(
         'conv-1',
         'assistant',
@@ -260,7 +260,7 @@ describe('createConversationService', () => {
         error: { message: 'Insert failed' },
       });
 
-      const service = createConversationService(supabase as any);
+      const service = createConversationService(insforge as any);
 
       await expect(
         service.addMessage('conv-1', 'user', 'Hello')
@@ -291,11 +291,11 @@ describe('createConversationService', () => {
 
       mockChain.order.mockResolvedValue({ data: messages, error: null });
 
-      const service = createConversationService(supabase as any);
+      const service = createConversationService(insforge as any);
       const result = await service.getMessages('conv-1');
 
       expect(result).toEqual(messages);
-      expect(supabase.from).toHaveBeenCalledWith('messages');
+      expect(insforge.from).toHaveBeenCalledWith('messages');
       expect(mockChain.eq).toHaveBeenCalledWith('conversation_id', 'conv-1');
       expect(mockChain.order).toHaveBeenCalledWith('created_at', { ascending: true });
     });
@@ -303,7 +303,7 @@ describe('createConversationService', () => {
     it('should return empty array when no messages exist', async () => {
       mockChain.order.mockResolvedValue({ data: [], error: null });
 
-      const service = createConversationService(supabase as any);
+      const service = createConversationService(insforge as any);
       const result = await service.getMessages('conv-1');
 
       expect(result).toEqual([]);
@@ -315,7 +315,7 @@ describe('createConversationService', () => {
         error: { message: 'Query failed' },
       });
 
-      const service = createConversationService(supabase as any);
+      const service = createConversationService(insforge as any);
 
       await expect(service.getMessages('conv-1')).rejects.toThrow(
         'Failed to fetch messages: Query failed'

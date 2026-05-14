@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-// Mock the Supabase server client
-vi.mock("@/lib/supabase/server", () => ({
+// Mock the InsForge server client
+vi.mock("@/lib/insforge/server", () => ({
   createClient: vi.fn(),
 }));
 
@@ -11,14 +11,14 @@ vi.mock("@/lib/workspaces/workspace-service", () => ({
   createWorkspaceService: vi.fn(),
 }));
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/insforge/server";
 import { createWorkspaceService } from "@/lib/workspaces/workspace-service";
 import { GET, POST } from "./route";
 
 const mockCreateClient = createClient as ReturnType<typeof vi.fn>;
 const mockCreateWorkspaceService = createWorkspaceService as ReturnType<typeof vi.fn>;
 
-function createMockSupabase(user: { id: string } | null = null) {
+function createMockInsForge(user: { id: string } | null = null) {
   return {
     auth: {
       getUser: vi.fn().mockResolvedValue({
@@ -35,7 +35,7 @@ describe("GET /api/workspaces", () => {
   });
 
   it("returns 401 when user is not authenticated", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase(null));
+    mockCreateClient.mockReturnValue(createMockInsForge(null));
 
     const response = await GET();
     const body = await response.json();
@@ -50,7 +50,7 @@ describe("GET /api/workspaces", () => {
       { id: "ws-2", name: "Workspace 2", created_at: "2024-01-02", owner_id: "user-1" },
     ];
 
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockCreateWorkspaceService.mockReturnValue({
       getByUser: vi.fn().mockResolvedValue(mockWorkspaces),
     });
@@ -63,7 +63,7 @@ describe("GET /api/workspaces", () => {
   });
 
   it("returns empty array when user has no workspaces", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockCreateWorkspaceService.mockReturnValue({
       getByUser: vi.fn().mockResolvedValue([]),
     });
@@ -76,7 +76,7 @@ describe("GET /api/workspaces", () => {
   });
 
   it("returns 500 when service throws an error", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockCreateWorkspaceService.mockReturnValue({
       getByUser: vi.fn().mockRejectedValue(new Error("Database error")),
     });
@@ -96,7 +96,7 @@ describe("POST /api/workspaces", () => {
   });
 
   it("returns 401 when user is not authenticated", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase(null));
+    mockCreateClient.mockReturnValue(createMockInsForge(null));
 
     const request = new NextRequest("http://localhost:3000/api/workspaces", {
       method: "POST",
@@ -111,7 +111,7 @@ describe("POST /api/workspaces", () => {
   });
 
   it("returns 400 when name is missing", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
 
     const request = new NextRequest("http://localhost:3000/api/workspaces", {
       method: "POST",
@@ -127,7 +127,7 @@ describe("POST /api/workspaces", () => {
   });
 
   it("returns 400 when name is empty string", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
 
     const request = new NextRequest("http://localhost:3000/api/workspaces", {
       method: "POST",
@@ -142,7 +142,7 @@ describe("POST /api/workspaces", () => {
   });
 
   it("returns 400 when body is invalid JSON", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
 
     const request = new NextRequest("http://localhost:3000/api/workspaces", {
       method: "POST",
@@ -165,7 +165,7 @@ describe("POST /api/workspaces", () => {
       owner_id: "user-1",
     };
 
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockCreateWorkspaceService.mockReturnValue({
       create: vi.fn().mockResolvedValue(mockWorkspace),
     });
@@ -190,7 +190,7 @@ describe("POST /api/workspaces", () => {
       owner_id: "user-1",
     });
 
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockCreateWorkspaceService.mockReturnValue({ create: mockCreate });
 
     const request = new NextRequest("http://localhost:3000/api/workspaces", {
@@ -204,7 +204,7 @@ describe("POST /api/workspaces", () => {
   });
 
   it("returns 500 when service throws an error", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockCreateWorkspaceService.mockReturnValue({
       create: vi.fn().mockRejectedValue(new Error("Creation failed")),
     });

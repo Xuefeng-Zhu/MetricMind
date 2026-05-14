@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createWorkspaceService } from "./workspace-service";
-import { SupabaseClient } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 
 // Helper to create a chainable mock query builder
 function createQueryBuilder(result: { data: any; error: any }) {
@@ -18,7 +18,7 @@ function createQueryBuilder(result: { data: any; error: any }) {
   return builder;
 }
 
-function createMockSupabase(overrides: {
+function createMockInsForge(overrides: {
   from?: Record<string, any>;
   rpc?: any;
 } = {}) {
@@ -32,7 +32,7 @@ function createMockSupabase(overrides: {
       return createQueryBuilder({ data: null, error: null });
     }),
     rpc: overrides.rpc ?? vi.fn().mockResolvedValue({ data: null, error: null }),
-  } as unknown as SupabaseClient;
+  } as unknown as InsForgeDatabaseClient;
 }
 
 describe("WorkspaceService", () => {
@@ -55,23 +55,23 @@ describe("WorkspaceService", () => {
         insert: vi.fn().mockResolvedValue({ data: null, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: {
           workspaces: workspacesBuilder,
           workspace_members: membersBuilder,
         },
       });
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       const result = await service.create("My Workspace", "user-1");
 
       expect(result).toEqual(mockWorkspace);
-      expect(supabase.from).toHaveBeenCalledWith("workspaces");
+      expect(insforge.from).toHaveBeenCalledWith("workspaces");
       expect(workspacesBuilder.insert).toHaveBeenCalledWith({
         name: "My Workspace",
         owner_id: "user-1",
       });
-      expect(supabase.from).toHaveBeenCalledWith("workspace_members");
+      expect(insforge.from).toHaveBeenCalledWith("workspace_members");
       expect(membersBuilder.insert).toHaveBeenCalledWith({
         workspace_id: "ws-1",
         user_id: "user-1",
@@ -89,11 +89,11 @@ describe("WorkspaceService", () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { workspaces: workspacesBuilder },
       });
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       await expect(service.create("Test", "user-1")).rejects.toThrow(
         "Database error"
       );
@@ -120,14 +120,14 @@ describe("WorkspaceService", () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: {
           workspaces: workspacesBuilder,
           workspace_members: membersBuilder,
         },
       });
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       await expect(service.create("Test", "user-1")).rejects.toThrow(
         "Duplicate member"
       );
@@ -154,14 +154,14 @@ describe("WorkspaceService", () => {
         in: vi.fn().mockResolvedValue({ data: mockWorkspaces, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: {
           workspace_members: membersBuilder,
           workspaces: workspacesBuilder,
         },
       });
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       const result = await service.getByUser("user-1");
 
       expect(result).toEqual(mockWorkspaces);
@@ -175,11 +175,11 @@ describe("WorkspaceService", () => {
         eq: vi.fn().mockResolvedValue({ data: [], error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { workspace_members: membersBuilder },
       });
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       const result = await service.getByUser("user-1");
 
       expect(result).toEqual([]);
@@ -214,7 +214,7 @@ describe("WorkspaceService", () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: {
           profiles: profilesBuilder,
           workspace_members: membersBuilder,
@@ -222,21 +222,21 @@ describe("WorkspaceService", () => {
         rpc: vi.fn().mockResolvedValue({ data: "auth-user-id", error: null }),
       });
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       const result = await service.inviteMember("ws-1", "invite@example.com", "analyst");
 
       expect(result).toEqual(mockMembership);
-      expect(supabase.rpc).toHaveBeenCalledWith("get_user_id_by_email", {
+      expect(insforge.rpc).toHaveBeenCalledWith("get_user_id_by_email", {
         email_input: "invite@example.com",
       });
     });
 
     it("throws error when user email is not found", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
       });
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       await expect(
         service.inviteMember("ws-1", "unknown@example.com", "viewer")
       ).rejects.toThrow('User with email "unknown@example.com" not found');
@@ -249,12 +249,12 @@ describe("WorkspaceService", () => {
         single: vi.fn().mockResolvedValue({ data: null, error: { message: "Not found" } }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { profiles: profilesBuilder },
         rpc: vi.fn().mockResolvedValue({ data: "auth-user-id", error: null }),
       });
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       await expect(
         service.inviteMember("ws-1", "noprofile@example.com", "viewer")
       ).rejects.toThrow('Profile for email "noprofile@example.com" not found');
@@ -278,11 +278,11 @@ describe("WorkspaceService", () => {
         single: vi.fn().mockResolvedValue({ data: mockMembership, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { workspace_members: membersBuilder },
       });
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       const result = await service.updateMemberRole("ws-1", "mem-1", "admin");
 
       expect(result).toEqual(mockMembership);
@@ -300,11 +300,11 @@ describe("WorkspaceService", () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { workspace_members: membersBuilder },
       });
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       await expect(
         service.updateMemberRole("ws-1", "mem-999", "admin")
       ).rejects.toThrow("Member not found");
@@ -319,11 +319,11 @@ describe("WorkspaceService", () => {
         then: (resolve: any) => resolve({ data: null, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { workspace_members: membersBuilder },
       });
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       await expect(service.removeMember("ws-1", "mem-1")).resolves.toBeUndefined();
       expect(membersBuilder.delete).toHaveBeenCalled();
     });
@@ -336,11 +336,11 @@ describe("WorkspaceService", () => {
           resolve({ data: null, error: { message: "Delete failed" } }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { workspace_members: membersBuilder },
       });
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       await expect(service.removeMember("ws-1", "mem-1")).rejects.toThrow(
         "Delete failed"
       );
@@ -377,14 +377,14 @@ describe("WorkspaceService", () => {
         then: (resolve: any) => resolve({ data: null, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: {
           workspaces: workspacesBuilder,
           workspace_members: membersBuilder,
         },
       });
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       await expect(
         service.transferOwnership("ws-1", "new-owner")
       ).resolves.toBeUndefined();
@@ -409,11 +409,11 @@ describe("WorkspaceService", () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { workspaces: workspacesBuilder },
       });
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       await expect(
         service.transferOwnership("ws-999", "new-owner")
       ).rejects.toThrow("Not found");
@@ -448,14 +448,14 @@ describe("WorkspaceService", () => {
         },
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: {
           workspaces: workspacesBuilder,
           workspace_members: membersBuilder,
         },
       });
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       await expect(
         service.transferOwnership("ws-1", "new-owner")
       ).rejects.toThrow("Failed to promote new owner");
@@ -486,14 +486,14 @@ describe("WorkspaceService", () => {
         then: (resolve: any) => resolve({ data: null, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: {
           workspaces: workspacesBuilder,
           workspace_members: membersBuilder,
         },
       });
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       await expect(
         service.transferOwnership("ws-1", "new-owner")
       ).rejects.toThrow("Failed to update workspace owner");

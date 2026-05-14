@@ -1,4 +1,4 @@
-import { SupabaseClient, Session, User, AuthError } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient, Session, User, AuthError } from "@/lib/insforge/types";
 
 export interface AuthResult {
   user: User | null;
@@ -12,41 +12,41 @@ export interface AuthService {
   getSession(): Promise<Session | null>;
 }
 
-export function createAuthService(supabase: SupabaseClient): AuthService {
+export function createAuthService(insforge: InsForgeDatabaseClient): AuthService {
   return {
     async signUp(email: string, password: string): Promise<AuthResult> {
-      const { data, error } = await supabase.auth.signUp({
+      const { data, error } = await insforge.auth.signUp({
         email,
         password,
       });
 
       return {
-        user: data.user ?? null,
+        user: data?.user ?? null,
         error: error ?? null,
       };
     },
 
     async signIn(email: string, password: string): Promise<AuthResult> {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await insforge.auth.signInWithPassword({
         email,
         password,
       });
 
       return {
-        user: data.user ?? null,
+        user: data?.user ?? null,
         error: error ?? null,
       };
     },
 
     async signOut(): Promise<void> {
-      const { error } = await supabase.auth.signOut();
+      const { error } = await insforge.auth.signOut();
       if (error) {
         throw error;
       }
     },
 
     async getSession(): Promise<Session | null> {
-      const { data, error } = await supabase.auth.getSession();
+      const { data, error } = await insforge.auth.getSession();
       if (error) {
         return null;
       }

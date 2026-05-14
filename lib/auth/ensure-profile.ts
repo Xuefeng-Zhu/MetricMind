@@ -1,4 +1,4 @@
-import { SupabaseClient, User } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient, User } from "@/lib/insforge/types";
 
 /**
  * Ensures a profile record exists for the given authenticated user.
@@ -9,11 +9,11 @@ import { SupabaseClient, User } from "@supabase/supabase-js";
  * Requirements: 1.4 - Auto-create profile when new user is created
  */
 export async function ensureProfile(
-  supabase: SupabaseClient,
+  insforge: InsForgeDatabaseClient,
   user: User
 ): Promise<{ id: string; auth_user_id: string; display_name: string | null; avatar_url: string | null }> {
   // Check if profile already exists
-  const { data: existingProfile, error: fetchError } = await supabase
+  const { data: existingProfile, error: fetchError } = await insforge
     .from("profiles")
     .select("id, auth_user_id, display_name, avatar_url")
     .eq("auth_user_id", user.id)
@@ -30,9 +30,10 @@ export async function ensureProfile(
 
   const avatarUrl = user.user_metadata?.avatar_url ?? null;
 
-  const { data: newProfile, error: insertError } = await supabase
+  const { data: newProfile, error: insertError } = await insforge
     .from("profiles")
     .insert({
+      id: user.id,
       auth_user_id: user.id,
       display_name: displayName,
       avatar_url: avatarUrl,
@@ -44,7 +45,7 @@ export async function ensureProfile(
     // If insert fails due to unique constraint (race condition with trigger),
     // try fetching again
     if (insertError.code === "23505") {
-      const { data: raceProfile, error: raceError } = await supabase
+      const { data: raceProfile, error: raceError } = await insforge
         .from("profiles")
         .select("id, auth_user_id, display_name, avatar_url")
         .eq("auth_user_id", user.id)

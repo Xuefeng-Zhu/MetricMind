@@ -1,4 +1,4 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 import { ColumnMetadata, suggestSemanticType } from "../data-sources/data-source-service";
 
 // --- Input Types ---
@@ -160,15 +160,15 @@ export interface SemanticLayerService {
 // --- Helper: get columns for an entity (dimensions + measures) ---
 
 async function getEntityColumns(
-  supabase: SupabaseClient,
+  insforge: InsForgeDatabaseClient,
   entityId: string
 ): Promise<string[]> {
-  const { data: dimensions } = await supabase
+  const { data: dimensions } = await insforge
     .from("dimensions")
     .select("source_column")
     .eq("entity_id", entityId);
 
-  const { data: measures } = await supabase
+  const { data: measures } = await insforge
     .from("measures")
     .select("source_column")
     .eq("entity_id", entityId);
@@ -223,13 +223,13 @@ function getSuggestionReason(
 // --- Factory Function ---
 
 export function createSemanticLayerService(
-  supabase: SupabaseClient
+  insforge: InsForgeDatabaseClient
 ): SemanticLayerService {
   return {
     // --- Entity CRUD ---
 
     async createEntity(workspaceId: string, input: CreateEntityInput): Promise<SemanticEntity> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from("semantic_entities")
         .insert({
           workspace_id: workspaceId,
@@ -248,7 +248,7 @@ export function createSemanticLayerService(
     },
 
     async getEntities(workspaceId: string): Promise<SemanticEntity[]> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from("semantic_entities")
         .select("id, workspace_id, data_source_id, name, description, created_at")
         .eq("workspace_id", workspaceId)
@@ -262,7 +262,7 @@ export function createSemanticLayerService(
     },
 
     async getEntity(id: string): Promise<SemanticEntity> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from("semantic_entities")
         .select("id, workspace_id, data_source_id, name, description, created_at")
         .eq("id", id)
@@ -278,7 +278,7 @@ export function createSemanticLayerService(
     // --- Dimensions & Measures ---
 
     async addDimension(entityId: string, input: CreateDimensionInput): Promise<Dimension> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from("dimensions")
         .insert({
           entity_id: entityId,
@@ -298,7 +298,7 @@ export function createSemanticLayerService(
     },
 
     async addMeasure(entityId: string, input: CreateMeasureInput): Promise<Measure> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from("measures")
         .insert({
           entity_id: entityId,
@@ -327,7 +327,7 @@ export function createSemanticLayerService(
         throw new Error(`Join validation failed: ${validation.errors.join(", ")}`);
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from("join_relationships")
         .insert({
           workspace_id: workspaceId,
@@ -351,7 +351,7 @@ export function createSemanticLayerService(
       const errors: string[] = [];
 
       // Get columns for source entity
-      const sourceColumns = await getEntityColumns(supabase, input.sourceEntityId);
+      const sourceColumns = await getEntityColumns(insforge, input.sourceEntityId);
       if (!sourceColumns.includes(input.sourceColumn)) {
         errors.push(
           `Source column '${input.sourceColumn}' does not exist on source entity`
@@ -359,7 +359,7 @@ export function createSemanticLayerService(
       }
 
       // Get columns for target entity
-      const targetColumns = await getEntityColumns(supabase, input.targetEntityId);
+      const targetColumns = await getEntityColumns(insforge, input.targetEntityId);
       if (!targetColumns.includes(input.targetColumn)) {
         errors.push(
           `Target column '${input.targetColumn}' does not exist on target entity`
@@ -375,7 +375,7 @@ export function createSemanticLayerService(
     // --- Metrics ---
 
     async createMetric(workspaceId: string, input: CreateMetricInput): Promise<Metric> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from("metrics")
         .insert({
           workspace_id: workspaceId,
@@ -398,7 +398,7 @@ export function createSemanticLayerService(
     },
 
     async certifyMetric(metricId: string, userId: string): Promise<Metric> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from("metrics")
         .update({
           certified: true,
@@ -417,7 +417,7 @@ export function createSemanticLayerService(
     },
 
     async getMetrics(workspaceId: string): Promise<Metric[]> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from("metrics")
         .select("id, workspace_id, name, description, formula, certified, certified_by, certified_at, created_at, created_by")
         .eq("workspace_id", workspaceId)
@@ -433,7 +433,7 @@ export function createSemanticLayerService(
     // --- Glossary ---
 
     async createGlossaryTerm(workspaceId: string, input: CreateGlossaryInput): Promise<GlossaryTerm> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from("glossary_terms")
         .insert({
           workspace_id: workspaceId,
@@ -457,7 +457,7 @@ export function createSemanticLayerService(
     },
 
     async getGlossaryTerms(workspaceId: string): Promise<GlossaryTerm[]> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from("glossary_terms")
         .select("id, workspace_id, name, definition, related_metric_ids, related_entity_ids, created_at")
         .eq("workspace_id", workspaceId)
@@ -472,7 +472,7 @@ export function createSemanticLayerService(
 
     async resolveTerms(workspaceId: string, terms: string[]): Promise<ResolvedTerm[]> {
       // Fetch all glossary terms for the workspace
-      const { data: allTerms, error } = await supabase
+      const { data: allTerms, error } = await insforge
         .from("glossary_terms")
         .select("name, definition, related_metric_ids, related_entity_ids")
         .eq("workspace_id", workspaceId);

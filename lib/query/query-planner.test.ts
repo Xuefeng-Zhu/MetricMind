@@ -66,8 +66,8 @@ const mockGovernanceEngine = {
   flagHallucination: vi.fn(),
 };
 
-// Mock Supabase client
-function createMockSupabase() {
+// Mock InsForge client
+function createMockInsForge() {
   const mockRpc = vi.fn().mockResolvedValue({
     data: [{ id: 1, name: 'Test', revenue: 1000 }],
     error: null,
@@ -100,12 +100,12 @@ function createMockSupabase() {
 
 describe('Query Planner', () => {
   let queryPlanner: QueryPlanner;
-  let mockSupabase: ReturnType<typeof createMockSupabase>;
+  let mockInsForge: ReturnType<typeof createMockInsForge>;
 
   beforeEach(() => {
     vi.clearAllMocks();
 
-    mockSupabase = createMockSupabase();
+    mockInsForge = createMockInsForge();
 
     (createAIService as ReturnType<typeof vi.fn>).mockReturnValue(mockAIService);
     (createSemanticLayerService as ReturnType<typeof vi.fn>).mockReturnValue(mockSemanticLayerService);
@@ -148,7 +148,7 @@ describe('Query Planner', () => {
       warnings: [],
     });
 
-    queryPlanner = createQueryPlanner(mockSupabase as any);
+    queryPlanner = createQueryPlanner(mockInsForge as any);
   });
 
   describe('processQuestion', () => {
@@ -245,8 +245,8 @@ describe('Query Planner', () => {
     it('should store query run record on successful execution', async () => {
       await queryPlanner.processQuestion(defaultInput);
 
-      // The query run should be stored via supabase.from('query_runs').insert(...)
-      expect(mockSupabase._mockFrom).toHaveBeenCalledWith('query_runs');
+      // The query run should be stored via insforge.from('query_runs').insert(...)
+      expect(mockInsForge._mockFrom).toHaveBeenCalledWith('query_runs');
     });
 
     it('should return default table chart recommendation', async () => {
@@ -276,17 +276,17 @@ describe('Query Planner', () => {
       expect(result.columns).toBeDefined();
     });
 
-    it('should call supabase rpc with the SQL query', async () => {
+    it('should call insforge rpc with the SQL query', async () => {
       await queryPlanner.executeSQL('ws1', 'SELECT * FROM customers');
 
-      expect(mockSupabase._mockRpc).toHaveBeenCalledWith('execute_readonly_query', {
+      expect(mockInsForge._mockRpc).toHaveBeenCalledWith('execute_readonly_query', {
         query_text: 'SELECT * FROM customers',
         workspace_id: 'ws1',
       });
     });
 
     it('should throw sanitized error on database failure', async () => {
-      mockSupabase._mockRpc.mockResolvedValue({
+      mockInsForge._mockRpc.mockResolvedValue({
         data: null,
         error: { message: 'relation "secret_table" does not exist' },
       });
@@ -297,7 +297,7 @@ describe('Query Planner', () => {
     });
 
     it('should throw timeout error when query exceeds 30 seconds', async () => {
-      mockSupabase._mockRpc.mockImplementation(
+      mockInsForge._mockRpc.mockImplementation(
         () => new Promise((resolve) => setTimeout(resolve, 31_000))
       );
 
@@ -307,7 +307,7 @@ describe('Query Planner', () => {
     }, 35_000);
 
     it('should infer column types from result data', async () => {
-      mockSupabase._mockRpc.mockResolvedValue({
+      mockInsForge._mockRpc.mockResolvedValue({
         data: [
           { id: 1, name: 'Alice', revenue: 1000.5, active: true, created_at: '2024-01-01' },
         ],
@@ -324,7 +324,7 @@ describe('Query Planner', () => {
     });
 
     it('should return empty columns for empty result set', async () => {
-      mockSupabase._mockRpc.mockResolvedValue({
+      mockInsForge._mockRpc.mockResolvedValue({
         data: [],
         error: null,
       });
