@@ -104,9 +104,9 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="grid min-h-screen grid-cols-[45%_55%]">
+    <main className="min-h-screen bg-white lg:grid lg:grid-cols-[45%_55%]">
       {/* Left branding panel */}
-      <div className="relative flex flex-col justify-between overflow-hidden bg-[#1E293B] p-10 text-white">
+      <div className="relative hidden flex-col justify-between overflow-hidden bg-[#1E293B] p-10 text-white lg:flex">
         {/* Decorative gradient circles */}
         <div className="pointer-events-none absolute -left-20 -top-20 h-72 w-72 rounded-full bg-blue-500/20 blur-3xl" />
         <div className="pointer-events-none absolute -bottom-32 -right-20 h-96 w-96 rounded-full bg-purple-500/20 blur-3xl" />
@@ -160,7 +160,7 @@ export default function SignupPage() {
       </div>
 
       {/* Right form panel */}
-      <div className="flex items-center justify-center bg-white p-10">
+      <div className="flex min-h-screen items-center justify-center bg-white px-6 py-10 sm:p-10">
         <div className="w-full max-w-md space-y-8">
           {/* Header */}
           <div className="space-y-2">
