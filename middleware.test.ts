@@ -151,6 +151,35 @@ describe("Auth Middleware", () => {
       expect(mockRedirect).not.toHaveBeenCalled();
       expect(mockNext).toHaveBeenCalled();
     });
+
+    it("should redirect instead of throwing when the user fetch fails", async () => {
+      vi.mocked(fetch).mockRejectedValue(new TypeError("network failed"));
+
+      const request = createMockRequest("/app", {
+        [INSFORGE_ACCESS_COOKIE]: "access-token",
+      });
+
+      await expect(middleware(request)).resolves.toMatchObject({
+        status: 307,
+      });
+      expect(mockRedirect).toHaveBeenCalled();
+    });
+
+    it("should redirect instead of throwing when the refresh fetch fails", async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(new Response("{}", { status: 401 }))
+        .mockRejectedValueOnce(new TypeError("network failed"));
+
+      const request = createMockRequest("/app", {
+        [INSFORGE_ACCESS_COOKIE]: "expired-access-token",
+        [INSFORGE_REFRESH_COOKIE]: "refresh-token",
+      });
+
+      await expect(middleware(request)).resolves.toMatchObject({
+        status: 307,
+      });
+      expect(mockRedirect).toHaveBeenCalled();
+    });
   });
 
   describe("public routes", () => {

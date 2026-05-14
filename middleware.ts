@@ -9,38 +9,46 @@ import {
 } from "@/lib/insforge/auth-cookies";
 
 async function fetchCurrentUser(accessToken: string) {
-  const response = await fetch(
-    `${process.env.NEXT_PUBLIC_INSFORGE_URL}/api/auth/sessions/current`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    }
-  );
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_INSFORGE_URL}/api/auth/sessions/current`,
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
 
-  return response.ok;
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
 
 async function refreshSession(refreshToken: string) {
-  const response = await fetch(
-    `${process.env.NEXT_PUBLIC_INSFORGE_URL}/api/auth/refresh?client_type=mobile`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    }
-  );
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_INSFORGE_URL}/api/auth/refresh?client_type=mobile`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      }
+    );
 
-  if (!response.ok) return null;
+    if (!response.ok) return null;
 
-  return (await response.json()) as {
-    accessToken?: string;
-    refreshToken?: string;
-    user?: unknown;
-  };
+    return (await response.json()) as {
+      accessToken?: string;
+      refreshToken?: string;
+      user?: unknown;
+    };
+  } catch {
+    return null;
+  }
 }
 
 function redirectToLogin(request: NextRequest) {
