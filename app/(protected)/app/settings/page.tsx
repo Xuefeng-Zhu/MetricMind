@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "@/lib/insforge/client";
 import {
   createWorkspaceService,
   Membership,
@@ -63,8 +63,8 @@ export default function SettingsPage() {
     setError(null);
 
     try {
-      const supabase = createClient();
-      const { data, error: fetchError } = await supabase
+      const insforge = createClient();
+      const { data, error: fetchError } = await insforge
         .from("workspace_members")
         .select("id, workspace_id, user_id, role, invited_at")
         .eq("workspace_id", currentWorkspace.id);
@@ -87,8 +87,8 @@ export default function SettingsPage() {
     setSuccessMessage(null);
 
     try {
-      const supabase = createClient();
-      const service = createWorkspaceService(supabase);
+      const insforge = createClient();
+      const service = createWorkspaceService(insforge);
       const membership = await service.inviteMember(
         currentWorkspace.id,
         data.email,
@@ -108,8 +108,8 @@ export default function SettingsPage() {
     setSuccessMessage(null);
 
     try {
-      const supabase = createClient();
-      const service = createWorkspaceService(supabase);
+      const insforge = createClient();
+      const service = createWorkspaceService(insforge);
       const updated = await service.updateMemberRole(
         currentWorkspace.id,
         memberId,
@@ -130,8 +130,8 @@ export default function SettingsPage() {
     setSuccessMessage(null);
 
     try {
-      const supabase = createClient();
-      const service = createWorkspaceService(supabase);
+      const insforge = createClient();
+      const service = createWorkspaceService(insforge);
       await service.removeMember(currentWorkspace.id, memberId);
       setMembers(members.filter((m) => m.id !== memberId));
       setSuccessMessage("Member removed successfully");

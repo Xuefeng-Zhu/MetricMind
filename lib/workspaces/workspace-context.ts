@@ -1,4 +1,4 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 import { useAuthStore } from "@/stores/auth-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { useDashboardStore } from "@/stores/dashboard-store";
@@ -94,13 +94,13 @@ function reloadWorkspaceData(workspaceId: string): void {
  * 1. The audit_events table with action 'security.violation' for persistent record
  * 2. console.error for immediate visibility in monitoring/logging systems
  *
- * @param supabase - Supabase client for database access
+ * @param insforge - InsForge client for database access
  * @param userId - The user ID who triggered the violation
  * @param requestedWorkspaceId - The workspace ID that was requested/expected
  * @param actualWorkspaceId - The workspace ID that was actually returned in the data
  */
 export async function logCrossWorkspaceViolation(
-  supabase: SupabaseClient,
+  insforge: InsForgeDatabaseClient,
   userId: string,
   requestedWorkspaceId: string,
   actualWorkspaceId: string
@@ -123,7 +123,7 @@ export async function logCrossWorkspaceViolation(
 
   // Log to audit_events table
   try {
-    const { error } = await supabase.from("audit_events").insert({
+    const { error } = await insforge.from("audit_events").insert({
       workspace_id: requestedWorkspaceId,
       actor_id: userId,
       action: "security.violation",

@@ -7,21 +7,63 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ensureProfile } from "@/lib/auth/ensure-profile";
+import { createClient } from "@/lib/insforge/client";
+import { useAuthStore } from "@/stores/auth-store";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { setUser, setSession } = useAuthStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError("");
+    setIsSubmitting(true);
 
-    if (email === "demo@metricmind.ai" && password === "password") {
+    try {
+      const insforge = createClient();
+      const { data, error: signInError } = await insforge.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (signInError || !data?.user || !data.accessToken || !data.refreshToken) {
+        setError(signInError?.message ?? "Invalid email or password. Please try again.");
+        return;
+      }
+
+      const session = {
+        user: data.user,
+        access_token: data.accessToken,
+        refresh_token: data.refreshToken,
+      };
+
+      const sessionResponse = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accessToken: data.accessToken,
+          refreshToken: data.refreshToken,
+        }),
+      });
+
+      if (!sessionResponse.ok) {
+        setError("Signed in, but could not persist the session.");
+        return;
+      }
+
+      await ensureProfile(insforge, data.user);
+      setUser(data.user);
+      setSession(session);
       router.push("/app");
-    } else {
-      setError("Invalid email or password. Please try again.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to log in.");
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -182,8 +224,8 @@ export default function LoginPage() {
               />
             </div>
 
-            <Button type="submit" className="w-full">
-              Log In
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting ? "Logging in..." : "Log In"}
             </Button>
           </form>
 

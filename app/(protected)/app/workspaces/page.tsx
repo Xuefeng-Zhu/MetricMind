@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "@/lib/insforge/client";
 import { createWorkspaceService, Workspace } from "@/lib/workspaces/workspace-service";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { useAuthStore } from "@/stores/auth-store";
@@ -55,8 +55,8 @@ export default function WorkspacesPage() {
     setError(null);
 
     try {
-      const supabase = createClient();
-      const service = createWorkspaceService(supabase);
+      const insforge = createClient();
+      const service = createWorkspaceService(insforge);
       const userWorkspaces = await service.getByUser(user.id);
       setWorkspaces(userWorkspaces);
     } catch (err) {
@@ -71,8 +71,8 @@ export default function WorkspacesPage() {
     setError(null);
 
     try {
-      const supabase = createClient();
-      const service = createWorkspaceService(supabase);
+      const insforge = createClient();
+      const service = createWorkspaceService(insforge);
       const workspace = await service.create(data.name, user.id);
       setWorkspaces([...workspaces, workspace]);
       reset();

@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-// Mock the Supabase server client
-vi.mock("@/lib/supabase/server", () => ({
+// Mock the InsForge server client
+vi.mock("@/lib/insforge/server", () => ({
   createClient: vi.fn(),
 }));
 
@@ -17,7 +17,7 @@ vi.mock("@/lib/rbac/rbac-middleware", () => ({
   resolveWorkspaceRole: vi.fn(),
 }));
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/insforge/server";
 import { createSemanticLayerService } from "@/lib/semantic/semantic-layer-service";
 import { hasPermission, resolveWorkspaceRole } from "@/lib/rbac/rbac-middleware";
 import { GET, POST } from "./route";
@@ -27,7 +27,7 @@ const mockCreateSemanticLayerService = createSemanticLayerService as ReturnType<
 const mockHasPermission = hasPermission as ReturnType<typeof vi.fn>;
 const mockResolveWorkspaceRole = resolveWorkspaceRole as ReturnType<typeof vi.fn>;
 
-function createMockSupabase(user: { id: string } | null = null) {
+function createMockInsForge(user: { id: string } | null = null) {
   return {
     auth: {
       getUser: vi.fn().mockResolvedValue({
@@ -56,7 +56,7 @@ describe("GET /api/semantic/glossary", () => {
       },
     ];
 
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("analyst");
     mockHasPermission.mockReturnValue(true);
     mockCreateSemanticLayerService.mockReturnValue({
@@ -79,7 +79,7 @@ describe("GET /api/semantic/glossary", () => {
   });
 
   it("returns 403 for viewer role on GET", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("viewer");
     mockHasPermission.mockReturnValue(false);
 
@@ -104,7 +104,7 @@ describe("POST /api/semantic/glossary", () => {
   });
 
   it("returns 403 for analyst role (requires admin+)", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("analyst");
     // hasPermission returns true for analyst check but false for admin check
     mockHasPermission.mockImplementation(
@@ -141,7 +141,7 @@ describe("POST /api/semantic/glossary", () => {
       created_at: "2024-01-01",
     };
 
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("admin");
     mockHasPermission.mockReturnValue(true);
     mockCreateSemanticLayerService.mockReturnValue({
@@ -169,7 +169,7 @@ describe("POST /api/semantic/glossary", () => {
   });
 
   it("returns 400 when required fields are missing", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("admin");
     mockHasPermission.mockReturnValue(true);
 
@@ -190,7 +190,7 @@ describe("POST /api/semantic/glossary", () => {
   });
 
   it("returns 409 when glossary term name already exists", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("admin");
     mockHasPermission.mockReturnValue(true);
     mockCreateSemanticLayerService.mockReturnValue({

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/insforge/server";
 import { createWorkspaceService, Role } from "@/lib/workspaces/workspace-service";
 import { hasPermission, resolveWorkspaceRole } from "@/lib/rbac/rbac-middleware";
 
@@ -16,11 +16,11 @@ export async function PATCH(
   request: NextRequest,
   { params }: RouteParams
 ): Promise<NextResponse> {
-  const supabase = createClient();
+  const insforge = createClient();
   const {
     data: { user },
     error: authError,
-  } = await supabase.auth.getUser();
+  } = await insforge.auth.getUser();
 
   if (authError || !user) {
     return NextResponse.json(
@@ -32,7 +32,7 @@ export async function PATCH(
   const { workspaceId, memberId } = params;
 
   // Check membership (owner only can update roles)
-  const role = await resolveWorkspaceRole(supabase, user.id, workspaceId);
+  const role = await resolveWorkspaceRole(insforge, user.id, workspaceId);
   if (!role) {
     return NextResponse.json(
       { error: "Forbidden", message: "You are not a member of this workspace" },
@@ -73,7 +73,7 @@ export async function PATCH(
   }
 
   try {
-    const workspaceService = createWorkspaceService(supabase);
+    const workspaceService = createWorkspaceService(insforge);
     const membership = await workspaceService.updateMemberRole(
       workspaceId,
       memberId,
@@ -82,7 +82,7 @@ export async function PATCH(
 
     // Audit log: member role changed (non-blocking)
     try {
-      await supabase.from("audit_events").insert({
+      await insforge.from("audit_events").insert({
         workspace_id: workspaceId,
         actor_id: user.id,
         action: "member.role_changed",
@@ -113,11 +113,11 @@ export async function DELETE(
   _request: NextRequest,
   { params }: RouteParams
 ): Promise<NextResponse> {
-  const supabase = createClient();
+  const insforge = createClient();
   const {
     data: { user },
     error: authError,
-  } = await supabase.auth.getUser();
+  } = await insforge.auth.getUser();
 
   if (authError || !user) {
     return NextResponse.json(
@@ -129,7 +129,7 @@ export async function DELETE(
   const { workspaceId, memberId } = params;
 
   // Check membership (owner only can remove members)
-  const role = await resolveWorkspaceRole(supabase, user.id, workspaceId);
+  const role = await resolveWorkspaceRole(insforge, user.id, workspaceId);
   if (!role) {
     return NextResponse.json(
       { error: "Forbidden", message: "You are not a member of this workspace" },
@@ -148,12 +148,12 @@ export async function DELETE(
   }
 
   try {
-    const workspaceService = createWorkspaceService(supabase);
+    const workspaceService = createWorkspaceService(insforge);
     await workspaceService.removeMember(workspaceId, memberId);
 
     // Audit log: member removed (non-blocking)
     try {
-      await supabase.from("audit_events").insert({
+      await insforge.from("audit_events").insert({
         workspace_id: workspaceId,
         actor_id: user.id,
         action: "member.removed",

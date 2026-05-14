@@ -1,17 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-// Mock the Supabase server client
-vi.mock("@/lib/supabase/server", () => ({
+// Mock the InsForge server client
+vi.mock("@/lib/insforge/server", () => ({
   createClient: vi.fn(),
 }));
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/insforge/server";
 import { GET } from "./route";
 
 const mockCreateClient = createClient as ReturnType<typeof vi.fn>;
 
-function createMockSupabase(
+function createMockInsForge(
   user: { id: string } | null = null,
   memberData: { role: string } | null = null,
   options?: {
@@ -97,7 +97,7 @@ describe("GET /api/conversations/[conversationId]/messages", () => {
   });
 
   it("returns 401 when user is not authenticated", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase(null));
+    mockCreateClient.mockReturnValue(createMockInsForge(null));
 
     const request = createRequest("ws-1");
     const response = await GET(request, { params: { conversationId: "conv-1" } });
@@ -108,7 +108,7 @@ describe("GET /api/conversations/[conversationId]/messages", () => {
   });
 
   it("returns 400 when workspace ID is missing", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
 
     const request = createRequest();
     const response = await GET(request, { params: { conversationId: "conv-1" } });
@@ -120,7 +120,7 @@ describe("GET /api/conversations/[conversationId]/messages", () => {
   });
 
   it("returns 403 when user is not a workspace member", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }, null));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }, null));
 
     const request = createRequest("ws-1");
     const response = await GET(request, { params: { conversationId: "conv-1" } });
@@ -142,7 +142,7 @@ describe("GET /api/conversations/[conversationId]/messages", () => {
     };
 
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "viewer" }, { conversation })
+      createMockInsForge({ id: "user-1" }, { role: "viewer" }, { conversation })
     );
 
     const request = createRequest("ws-1");
@@ -164,7 +164,7 @@ describe("GET /api/conversations/[conversationId]/messages", () => {
     };
 
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "viewer" }, { conversation })
+      createMockInsForge({ id: "user-1" }, { role: "viewer" }, { conversation })
     );
 
     const request = createRequest("ws-1");
@@ -206,7 +206,7 @@ describe("GET /api/conversations/[conversationId]/messages", () => {
     ];
 
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "viewer" }, {
+      createMockInsForge({ id: "user-1" }, { role: "viewer" }, {
         conversation,
         messages,
       })
@@ -231,7 +231,7 @@ describe("GET /api/conversations/[conversationId]/messages", () => {
     };
 
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "viewer" }, {
+      createMockInsForge({ id: "user-1" }, { role: "viewer" }, {
         conversation,
         messages: [],
       })
@@ -245,7 +245,7 @@ describe("GET /api/conversations/[conversationId]/messages", () => {
 
   it("returns 404 when conversation does not exist", async () => {
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "viewer" }, {
+      createMockInsForge({ id: "user-1" }, { role: "viewer" }, {
         conversationError: { message: "Failed to fetch conversation: not found" },
       })
     );

@@ -1,17 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-// Mock the Supabase server client
-vi.mock("@/lib/supabase/server", () => ({
+// Mock the InsForge server client
+vi.mock("@/lib/insforge/server", () => ({
   createClient: vi.fn(),
 }));
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/insforge/server";
 import { GET, PUT } from "./route";
 
 const mockCreateClient = createClient as ReturnType<typeof vi.fn>;
 
-function createMockSupabase(
+function createMockInsForge(
   user: { id: string } | null = null,
   memberData: { role: string } | null = null,
   configData: Record<string, unknown> | null = null,
@@ -84,7 +84,7 @@ describe("GET /api/ai-config", () => {
   });
 
   it("returns 401 when user is not authenticated", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase(null));
+    mockCreateClient.mockReturnValue(createMockInsForge(null));
 
     const request = createRequest("GET", "ws-1");
     const response = await GET(request);
@@ -95,7 +95,7 @@ describe("GET /api/ai-config", () => {
   });
 
   it("returns 400 when workspace ID is missing", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
 
     const request = createRequest("GET");
     const response = await GET(request);
@@ -108,7 +108,7 @@ describe("GET /api/ai-config", () => {
 
   it("returns 403 when user is not a workspace member", async () => {
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, null)
+      createMockInsForge({ id: "user-1" }, null)
     );
 
     const request = createRequest("GET", "ws-1");
@@ -122,7 +122,7 @@ describe("GET /api/ai-config", () => {
 
   it("returns 403 when user is not an owner", async () => {
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "admin" })
+      createMockInsForge({ id: "user-1" }, { role: "admin" })
     );
 
     const request = createRequest("GET", "ws-1");
@@ -135,13 +135,13 @@ describe("GET /api/ai-config", () => {
   });
 
   it("returns null config when no config exists", async () => {
-    const supabase = createMockSupabase(
+    const insforge = createMockInsForge(
       { id: "user-1" },
       { role: "owner" },
       null,
       { code: "PGRST116", message: "No rows found" }
     );
-    mockCreateClient.mockReturnValue(supabase);
+    mockCreateClient.mockReturnValue(insforge);
 
     const request = createRequest("GET", "ws-1");
     const response = await GET(request);
@@ -160,13 +160,13 @@ describe("GET /api/ai-config", () => {
       created_at: "2024-01-01T00:00:00Z",
     };
 
-    const supabase = createMockSupabase(
+    const insforge = createMockInsForge(
       { id: "user-1" },
       { role: "owner" },
       configData,
       null
     );
-    mockCreateClient.mockReturnValue(supabase);
+    mockCreateClient.mockReturnValue(insforge);
 
     const request = createRequest("GET", "ws-1");
     const response = await GET(request);
@@ -185,7 +185,7 @@ describe("PUT /api/ai-config", () => {
   });
 
   it("returns 401 when user is not authenticated", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase(null));
+    mockCreateClient.mockReturnValue(createMockInsForge(null));
 
     const request = createRequest("PUT", "ws-1", {
       endpointUrl: "https://api.openai.com/v1",
@@ -200,7 +200,7 @@ describe("PUT /api/ai-config", () => {
   });
 
   it("returns 400 when workspace ID is missing", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
 
     const request = createRequest("PUT", undefined, {
       endpointUrl: "https://api.openai.com/v1",
@@ -216,7 +216,7 @@ describe("PUT /api/ai-config", () => {
 
   it("returns 403 when user is not an owner", async () => {
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "analyst" })
+      createMockInsForge({ id: "user-1" }, { role: "analyst" })
     );
 
     const request = createRequest("PUT", "ws-1", {
@@ -234,7 +234,7 @@ describe("PUT /api/ai-config", () => {
 
   it("returns 400 when endpointUrl is missing", async () => {
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "owner" })
+      createMockInsForge({ id: "user-1" }, { role: "owner" })
     );
 
     const request = createRequest("PUT", "ws-1", {
@@ -250,7 +250,7 @@ describe("PUT /api/ai-config", () => {
 
   it("returns 400 when modelName is missing", async () => {
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "owner" })
+      createMockInsForge({ id: "user-1" }, { role: "owner" })
     );
 
     const request = createRequest("PUT", "ws-1", {
@@ -266,7 +266,7 @@ describe("PUT /api/ai-config", () => {
 
   it("returns 400 when apiKey is missing", async () => {
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "owner" })
+      createMockInsForge({ id: "user-1" }, { role: "owner" })
     );
 
     const request = createRequest("PUT", "ws-1", {
@@ -282,7 +282,7 @@ describe("PUT /api/ai-config", () => {
 
   it("returns 400 when body is invalid JSON", async () => {
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "owner" })
+      createMockInsForge({ id: "user-1" }, { role: "owner" })
     );
 
     const request = new NextRequest("http://localhost:3000/api/ai-config", {
@@ -306,7 +306,7 @@ describe("PUT /api/ai-config", () => {
       created_at: "2024-01-01T00:00:00Z",
     };
 
-    const supabase = createMockSupabase(
+    const insforge = createMockInsForge(
       { id: "user-1" },
       { role: "owner" },
       null,
@@ -314,7 +314,7 @@ describe("PUT /api/ai-config", () => {
       upsertResult,
       null
     );
-    mockCreateClient.mockReturnValue(supabase);
+    mockCreateClient.mockReturnValue(insforge);
 
     const request = createRequest("PUT", "ws-1", {
       endpointUrl: "https://api.openai.com/v1",
@@ -330,7 +330,7 @@ describe("PUT /api/ai-config", () => {
   });
 
   it("returns 500 when upsert fails", async () => {
-    const supabase = createMockSupabase(
+    const insforge = createMockInsForge(
       { id: "user-1" },
       { role: "owner" },
       null,
@@ -338,7 +338,7 @@ describe("PUT /api/ai-config", () => {
       null,
       { code: "23505", message: "Database error" }
     );
-    mockCreateClient.mockReturnValue(supabase);
+    mockCreateClient.mockReturnValue(insforge);
 
     const request = createRequest("PUT", "ws-1", {
       endpointUrl: "https://api.openai.com/v1",

@@ -9,7 +9,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { useDashboardStore } from "@/stores/dashboard-store";
 import { useConversationStore } from "@/stores/conversation-store";
-import { SupabaseClient } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 
 describe("workspace-context", () => {
   beforeEach(() => {
@@ -243,14 +243,14 @@ describe("workspace-context", () => {
         .spyOn(console, "error")
         .mockImplementation(() => {});
 
-      const mockSupabase = {
+      const mockInsForge = {
         from: vi.fn().mockReturnValue({
           insert: vi.fn().mockResolvedValue({ data: null, error: null }),
         }),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
       await logCrossWorkspaceViolation(
-        mockSupabase,
+        mockInsForge,
         "user-123",
         "ws-requested",
         "ws-actual"
@@ -276,20 +276,20 @@ describe("workspace-context", () => {
       const insertMock = vi
         .fn()
         .mockResolvedValue({ data: null, error: null });
-      const mockSupabase = {
+      const mockInsForge = {
         from: vi.fn().mockReturnValue({
           insert: insertMock,
         }),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
       await logCrossWorkspaceViolation(
-        mockSupabase,
+        mockInsForge,
         "user-123",
         "ws-requested",
         "ws-actual"
       );
 
-      expect(mockSupabase.from).toHaveBeenCalledWith("audit_events");
+      expect(mockInsForge.from).toHaveBeenCalledWith("audit_events");
       expect(insertMock).toHaveBeenCalledWith(
         expect.objectContaining({
           workspace_id: "ws-requested",
@@ -311,7 +311,7 @@ describe("workspace-context", () => {
         .spyOn(console, "error")
         .mockImplementation(() => {});
 
-      const mockSupabase = {
+      const mockInsForge = {
         from: vi.fn().mockReturnValue({
           insert: vi
             .fn()
@@ -320,10 +320,10 @@ describe("workspace-context", () => {
               error: { message: "DB connection failed" },
             }),
         }),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
       await logCrossWorkspaceViolation(
-        mockSupabase,
+        mockInsForge,
         "user-123",
         "ws-requested",
         "ws-actual"
@@ -337,21 +337,21 @@ describe("workspace-context", () => {
       );
     });
 
-    it("handles exceptions from supabase gracefully", async () => {
+    it("handles exceptions from insforge gracefully", async () => {
       const consoleErrorSpy = vi
         .spyOn(console, "error")
         .mockImplementation(() => {});
 
-      const mockSupabase = {
+      const mockInsForge = {
         from: vi.fn().mockReturnValue({
           insert: vi.fn().mockRejectedValue(new Error("Network error")),
         }),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
       // Should not throw
       await expect(
         logCrossWorkspaceViolation(
-          mockSupabase,
+          mockInsForge,
           "user-123",
           "ws-requested",
           "ws-actual"

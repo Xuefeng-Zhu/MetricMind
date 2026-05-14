@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { createAuditService, AuditAction } from "./audit-service";
-import { SupabaseClient } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 
-function createMockSupabase(overrides: { from?: Record<string, any> } = {}) {
+function createMockInsForge(overrides: { from?: Record<string, any> } = {}) {
   const fromMocks = overrides.from ?? {};
 
   return {
@@ -18,7 +18,7 @@ function createMockSupabase(overrides: { from?: Record<string, any> } = {}) {
         range: vi.fn().mockResolvedValue({ data: [], error: null }),
       };
     }),
-  } as unknown as SupabaseClient;
+  } as unknown as InsForgeDatabaseClient;
 }
 
 describe("AuditService", () => {
@@ -28,11 +28,11 @@ describe("AuditService", () => {
         insert: vi.fn().mockResolvedValue({ data: null, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { audit_events: auditBuilder },
       });
 
-      const service = createAuditService(supabase);
+      const service = createAuditService(insforge);
 
       await service.log({
         workspace_id: "ws-1",
@@ -43,7 +43,7 @@ describe("AuditService", () => {
         metadata: { ip: "127.0.0.1" },
       });
 
-      expect(supabase.from).toHaveBeenCalledWith("audit_events");
+      expect(insforge.from).toHaveBeenCalledWith("audit_events");
       expect(auditBuilder.insert).toHaveBeenCalledWith({
         workspace_id: "ws-1",
         actor_id: "user-1",
@@ -59,11 +59,11 @@ describe("AuditService", () => {
         insert: vi.fn().mockResolvedValue({ data: null, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { audit_events: auditBuilder },
       });
 
-      const service = createAuditService(supabase);
+      const service = createAuditService(insforge);
 
       await service.log({
         workspace_id: "ws-1",
@@ -89,11 +89,11 @@ describe("AuditService", () => {
         insert: vi.fn().mockResolvedValue({ data: null, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { audit_events: auditBuilder },
       });
 
-      const service = createAuditService(supabase);
+      const service = createAuditService(insforge);
 
       await service.log({
         workspace_id: "ws-1",
@@ -118,11 +118,11 @@ describe("AuditService", () => {
         insert: vi.fn().mockResolvedValue({ data: null, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { audit_events: auditBuilder },
       });
 
-      const service = createAuditService(supabase);
+      const service = createAuditService(insforge);
 
       await service.log({
         workspace_id: "ws-1",
@@ -149,11 +149,11 @@ describe("AuditService", () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { audit_events: auditBuilder },
       });
 
-      const service = createAuditService(supabase);
+      const service = createAuditService(insforge);
 
       await expect(
         service.log({
@@ -200,11 +200,11 @@ describe("AuditService", () => {
         range: vi.fn().mockResolvedValue({ data: mockEvents, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { audit_events: auditBuilder },
       });
 
-      const service = createAuditService(supabase);
+      const service = createAuditService(insforge);
       const result = await service.getEvents("ws-1");
 
       expect(result).toHaveLength(2);
@@ -238,11 +238,11 @@ describe("AuditService", () => {
         range: vi.fn().mockResolvedValue({ data: mockEvents, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { audit_events: auditBuilder },
       });
 
-      const service = createAuditService(supabase);
+      const service = createAuditService(insforge);
       await service.getEvents("ws-1", { action: "user.login" });
 
       // eq is called for workspace_id and action
@@ -258,11 +258,11 @@ describe("AuditService", () => {
         range: vi.fn().mockResolvedValue({ data: [], error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { audit_events: auditBuilder },
       });
 
-      const service = createAuditService(supabase);
+      const service = createAuditService(insforge);
       await service.getEvents("ws-1", { actorId: "user-1" });
 
       expect(auditBuilder.eq).toHaveBeenCalledWith("actor_id", "user-1");
@@ -276,11 +276,11 @@ describe("AuditService", () => {
         range: vi.fn().mockResolvedValue({ data: [], error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { audit_events: auditBuilder },
       });
 
-      const service = createAuditService(supabase);
+      const service = createAuditService(insforge);
       await service.getEvents("ws-1", { limit: 25, offset: 50 });
 
       // range(offset, offset + limit - 1) => range(50, 74)
@@ -295,11 +295,11 @@ describe("AuditService", () => {
         range: vi.fn().mockResolvedValue({ data: [], error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { audit_events: auditBuilder },
       });
 
-      const service = createAuditService(supabase);
+      const service = createAuditService(insforge);
       await service.getEvents("ws-1");
 
       // range(0, 99) for default limit=100, offset=0
@@ -327,11 +327,11 @@ describe("AuditService", () => {
         range: vi.fn().mockResolvedValue({ data: mockEvents, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { audit_events: auditBuilder },
       });
 
-      const service = createAuditService(supabase);
+      const service = createAuditService(insforge);
       const result = await service.getEvents("ws-1");
 
       expect(result[0].timestamp).toBe("2024-06-15T10:30:00Z");
@@ -350,11 +350,11 @@ describe("AuditService", () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { audit_events: auditBuilder },
       });
 
-      const service = createAuditService(supabase);
+      const service = createAuditService(insforge);
 
       await expect(service.getEvents("ws-1")).rejects.toThrow(
         "Failed to fetch audit events: Permission denied"
@@ -369,11 +369,11 @@ describe("AuditService", () => {
         range: vi.fn().mockResolvedValue({ data: [], error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { audit_events: auditBuilder },
       });
 
-      const service = createAuditService(supabase);
+      const service = createAuditService(insforge);
       const result = await service.getEvents("ws-1");
 
       expect(result).toEqual([]);

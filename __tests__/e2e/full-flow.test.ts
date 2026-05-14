@@ -1,7 +1,7 @@
 /**
  * End-to-End Integration Tests
  *
- * Tests the complete MetricMind flow using mocked Supabase clients:
+ * Tests the complete MetricMind flow using mocked InsForge clients:
  * 1. Full pipeline: signup → workspace → CSV upload → entity → ask question → chart → dashboard
  * 2. RBAC role-based access restrictions
  * 3. Governance engine blocks dangerous queries
@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SupabaseClient } from '@supabase/supabase-js';
+import { InsForgeDatabaseClient } from '@/lib/insforge/types';
 
 // Service imports
 import { createAuthService } from '@/lib/auth/auth-service';
@@ -22,14 +22,14 @@ import { createGovernanceEngine, checkDenylist, checkSelectOnly } from '@/lib/go
 import { hasPermission, type Role } from '@/lib/rbac/rbac-middleware';
 import { createVisualizationService } from '@/lib/visualization/visualization-service';
 
-// --- Mock Supabase Factory ---
+// --- Mock InsForge Factory ---
 
-function createMockSupabase(overrides?: {
+function createMockInsForge(overrides?: {
   authUser?: { id: string; email: string } | null;
   authError?: { message: string } | null;
   tables?: Record<string, unknown[]>;
   rpcResult?: { data: unknown; error: unknown };
-}): SupabaseClient {
+}): InsForgeDatabaseClient {
   const tables = overrides?.tables ?? {};
   const insertedRows: Record<string, unknown[]> = {};
 
@@ -141,7 +141,7 @@ function createMockSupabase(overrides?: {
     auth: mockAuth,
     rpc: mockRpc,
     _insertedRows: insertedRows,
-  } as unknown as SupabaseClient;
+  } as unknown as InsForgeDatabaseClient;
 }
 
 // =============================================================================
@@ -149,11 +149,11 @@ function createMockSupabase(overrides?: {
 // =============================================================================
 
 describe('E2E: Full Pipeline - Question to Dashboard', () => {
-  let supabase: SupabaseClient;
+  let insforge: InsForgeDatabaseClient;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    supabase = createMockSupabase({
+    insforge = createMockInsForge({
       authUser: { id: 'user-1', email: 'analyst@company.com' },
       tables: {
         workspaces: [{ id: 'ws-1', name: 'Test Workspace', owner_id: 'user-1', created_at: '2024-01-01' }],
@@ -168,7 +168,7 @@ describe('E2E: Full Pipeline - Question to Dashboard', () => {
   });
 
   it('should sign up a new user successfully', async () => {
-    const authService = createAuthService(supabase);
+    const authService = createAuthService(insforge);
     const result = await authService.signUp('new@company.com', 'securepass123');
 
     expect(result.user).not.toBeNull();
@@ -177,17 +177,17 @@ describe('E2E: Full Pipeline - Question to Dashboard', () => {
   });
 
   it('should create a workspace and assign owner role', async () => {
-    const workspaceService = createWorkspaceService(supabase);
+    const workspaceService = createWorkspaceService(insforge);
     const workspace = await workspaceService.create('Analytics Team', 'user-1');
 
     expect(workspace).toBeDefined();
     expect(workspace.name).toBe('Analytics Team');
     // Verify workspace_members insert was called (owner role assignment)
-    expect(supabase.from).toHaveBeenCalledWith('workspace_members');
+    expect(insforge.from).toHaveBeenCalledWith('workspace_members');
   });
 
   it('should create a semantic entity from a data source', async () => {
-    const semanticService = createSemanticLayerService(supabase);
+    const semanticService = createSemanticLayerService(insforge);
     const entity = await semanticService.createEntity('ws-1', {
       name: 'Customers',
       dataSourceId: 'ds-1',
@@ -196,7 +196,7 @@ describe('E2E: Full Pipeline - Question to Dashboard', () => {
 
     expect(entity).toBeDefined();
     expect(entity.name).toBe('Customers');
-    expect(supabase.from).toHaveBeenCalledWith('semantic_entities');
+    expect(insforge.from).toHaveBeenCalledWith('semantic_entities');
   });
 
   it('should recommend a chart type based on query results', () => {
@@ -234,7 +234,7 @@ describe('E2E: Full Pipeline - Question to Dashboard', () => {
   });
 
   it('should save an insight to a dashboard', async () => {
-    const dashboardService = createDashboardService(supabase);
+    const dashboardService = createDashboardService(insforge);
 
     const widget = await dashboardService.saveInsight('dash-1', {
       question: 'What is our MRR?',
@@ -249,11 +249,11 @@ describe('E2E: Full Pipeline - Question to Dashboard', () => {
 
     expect(widget).toBeDefined();
     expect(widget.type).toBe('insight_card');
-    expect(supabase.from).toHaveBeenCalledWith('widgets');
+    expect(insforge.from).toHaveBeenCalledWith('widgets');
   });
 
   it('should create a dashboard and add widgets', async () => {
-    const dashboardService = createDashboardService(supabase);
+    const dashboardService = createDashboardService(insforge);
 
     const dashboard = await dashboardService.create('ws-1', {
       name: 'Executive Overview',
@@ -393,13 +393,13 @@ describe('E2E: Governance Engine - Dangerous Query Blocking', () => {
   });
 
   it('should validate SQL through the full governance engine', async () => {
-    const supabase = createMockSupabase({
+    const insforge = createMockInsForge({
       tables: {
         sql_policies: [],
         audit_events: [],
       },
     });
-    const engine = createGovernanceEngine(supabase);
+    const engine = createGovernanceEngine(insforge);
 
     // Valid SELECT should pass
     const validResult = await engine.validateSQL(

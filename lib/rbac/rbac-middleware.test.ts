@@ -2,18 +2,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
 import { hasPermission, resolveWorkspaceRole, withRBAC } from "./rbac-middleware";
 import type { Role, RBACContext } from "./rbac-middleware";
-import { SupabaseClient } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 
-// Mock the Supabase server client
-vi.mock("@/lib/supabase/server", () => ({
+// Mock the InsForge server client
+vi.mock("@/lib/insforge/server", () => ({
   createClient: vi.fn(),
 }));
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/insforge/server";
 
 const mockCreateClient = createClient as ReturnType<typeof vi.fn>;
 
-function createMockSupabase(overrides: {
+function createMockInsForge(overrides: {
   getUser?: any;
   workspaceMemberQuery?: any;
 } = {}) {
@@ -32,7 +32,7 @@ function createMockSupabase(overrides: {
       ),
     },
     from: mockFrom,
-  } as unknown as SupabaseClient;
+  } as unknown as InsForgeDatabaseClient;
 }
 
 function createMockRequest(options: {
@@ -81,29 +81,29 @@ describe("RBAC Middleware", () => {
 
   describe("resolveWorkspaceRole", () => {
     it("returns the role when user is a workspace member", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         workspaceMemberQuery: { data: { role: "analyst" }, error: null },
       });
 
-      const role = await resolveWorkspaceRole(supabase, "user-1", "workspace-1");
+      const role = await resolveWorkspaceRole(insforge, "user-1", "workspace-1");
       expect(role).toBe("analyst");
     });
 
     it("returns null when user is not a workspace member", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         workspaceMemberQuery: { data: null, error: { message: "Not found" } },
       });
 
-      const role = await resolveWorkspaceRole(supabase, "user-1", "workspace-1");
+      const role = await resolveWorkspaceRole(insforge, "user-1", "workspace-1");
       expect(role).toBeNull();
     });
 
     it("returns null when query returns no data", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         workspaceMemberQuery: { data: null, error: null },
       });
 
-      const role = await resolveWorkspaceRole(supabase, "user-1", "workspace-1");
+      const role = await resolveWorkspaceRole(insforge, "user-1", "workspace-1");
       expect(role).toBeNull();
     });
   });
@@ -118,10 +118,10 @@ describe("RBAC Middleware", () => {
     });
 
     it("returns 401 when user is not authenticated", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         getUser: { data: { user: null }, error: { message: "Not authenticated" } },
       });
-      mockCreateClient.mockReturnValue(supabase);
+      mockCreateClient.mockReturnValue(insforge);
 
       const wrappedHandler = withRBAC({ requiredRole: "viewer" }, mockHandler);
       const req = createMockRequest({
@@ -137,10 +137,10 @@ describe("RBAC Middleware", () => {
     });
 
     it("returns 400 when workspace ID is missing", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         getUser: { data: { user: { id: "user-1" } }, error: null },
       });
-      mockCreateClient.mockReturnValue(supabase);
+      mockCreateClient.mockReturnValue(insforge);
 
       const wrappedHandler = withRBAC({ requiredRole: "viewer" }, mockHandler);
       const req = createMockRequest(); // No workspace ID
@@ -154,11 +154,11 @@ describe("RBAC Middleware", () => {
     });
 
     it("returns 403 when user is not a workspace member", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         getUser: { data: { user: { id: "user-1" } }, error: null },
         workspaceMemberQuery: { data: null, error: { message: "Not found" } },
       });
-      mockCreateClient.mockReturnValue(supabase);
+      mockCreateClient.mockReturnValue(insforge);
 
       const wrappedHandler = withRBAC({ requiredRole: "viewer" }, mockHandler);
       const req = createMockRequest({
@@ -175,11 +175,11 @@ describe("RBAC Middleware", () => {
     });
 
     it("returns 403 when user role is insufficient", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         getUser: { data: { user: { id: "user-1" } }, error: null },
         workspaceMemberQuery: { data: { role: "viewer" }, error: null },
       });
-      mockCreateClient.mockReturnValue(supabase);
+      mockCreateClient.mockReturnValue(insforge);
 
       const wrappedHandler = withRBAC({ requiredRole: "admin" }, mockHandler);
       const req = createMockRequest({
@@ -198,11 +198,11 @@ describe("RBAC Middleware", () => {
     });
 
     it("calls handler with RBACContext when role is sufficient", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         getUser: { data: { user: { id: "user-1" } }, error: null },
         workspaceMemberQuery: { data: { role: "admin" }, error: null },
       });
-      mockCreateClient.mockReturnValue(supabase);
+      mockCreateClient.mockReturnValue(insforge);
 
       const wrappedHandler = withRBAC({ requiredRole: "analyst" }, mockHandler);
       const req = createMockRequest({
@@ -222,11 +222,11 @@ describe("RBAC Middleware", () => {
     });
 
     it("extracts workspace ID from x-workspace-id header", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         getUser: { data: { user: { id: "user-1" } }, error: null },
         workspaceMemberQuery: { data: { role: "owner" }, error: null },
       });
-      mockCreateClient.mockReturnValue(supabase);
+      mockCreateClient.mockReturnValue(insforge);
 
       const wrappedHandler = withRBAC({ requiredRole: "viewer" }, mockHandler);
       const req = createMockRequest({
@@ -241,11 +241,11 @@ describe("RBAC Middleware", () => {
     });
 
     it("extracts workspace ID from query parameter as fallback", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         getUser: { data: { user: { id: "user-1" } }, error: null },
         workspaceMemberQuery: { data: { role: "owner" }, error: null },
       });
-      mockCreateClient.mockReturnValue(supabase);
+      mockCreateClient.mockReturnValue(insforge);
 
       const wrappedHandler = withRBAC({ requiredRole: "viewer" }, mockHandler);
       const req = createMockRequest({
@@ -260,11 +260,11 @@ describe("RBAC Middleware", () => {
     });
 
     it("prefers header over query parameter for workspace ID", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         getUser: { data: { user: { id: "user-1" } }, error: null },
         workspaceMemberQuery: { data: { role: "owner" }, error: null },
       });
-      mockCreateClient.mockReturnValue(supabase);
+      mockCreateClient.mockReturnValue(insforge);
 
       const wrappedHandler = withRBAC({ requiredRole: "viewer" }, mockHandler);
       const req = createMockRequest({
@@ -280,11 +280,11 @@ describe("RBAC Middleware", () => {
     });
 
     it("owner role passes when owner is required", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         getUser: { data: { user: { id: "user-1" } }, error: null },
         workspaceMemberQuery: { data: { role: "owner" }, error: null },
       });
-      mockCreateClient.mockReturnValue(supabase);
+      mockCreateClient.mockReturnValue(insforge);
 
       const wrappedHandler = withRBAC({ requiredRole: "owner" }, mockHandler);
       const req = createMockRequest({
@@ -297,11 +297,11 @@ describe("RBAC Middleware", () => {
     });
 
     it("analyst role fails when admin is required", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         getUser: { data: { user: { id: "user-1" } }, error: null },
         workspaceMemberQuery: { data: { role: "analyst" }, error: null },
       });
-      mockCreateClient.mockReturnValue(supabase);
+      mockCreateClient.mockReturnValue(insforge);
 
       const wrappedHandler = withRBAC({ requiredRole: "admin" }, mockHandler);
       const req = createMockRequest({

@@ -8,7 +8,7 @@
  * Requirements: 15.1, 15.2, 15.3, 15.5
  */
 
-import { SupabaseClient } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 import { ChartConfig } from "../visualization/visualization-service";
 
 // --- Types ---
@@ -127,14 +127,14 @@ function mapWidgetRow(row: {
 // --- Factory ---
 
 export function createDashboardService(
-  supabase: SupabaseClient
+  insforge: InsForgeDatabaseClient
 ): DashboardService {
   return {
     async create(
       workspaceId: string,
       input: CreateDashboardInput
     ): Promise<Dashboard> {
-      const { data: dashboard, error } = await supabase
+      const { data: dashboard, error } = await insforge
         .from("dashboards")
         .insert({
           workspace_id: workspaceId,
@@ -156,7 +156,7 @@ export function createDashboardService(
     },
 
     async getDashboards(workspaceId: string): Promise<Dashboard[]> {
-      const { data: dashboards, error } = await supabase
+      const { data: dashboards, error } = await insforge
         .from("dashboards")
         .select("id, workspace_id, name, description, created_by, created_at")
         .eq("workspace_id", workspaceId)
@@ -172,7 +172,7 @@ export function createDashboardService(
 
       // Fetch widgets for all dashboards in a single query
       const dashboardIds = dashboards.map((d) => d.id);
-      const { data: widgets, error: widgetError } = await supabase
+      const { data: widgets, error: widgetError } = await insforge
         .from("widgets")
         .select("id, dashboard_id, type, config, pos_x, pos_y, width, height")
         .in("dashboard_id", dashboardIds);
@@ -197,7 +197,7 @@ export function createDashboardService(
     },
 
     async getDashboard(id: string): Promise<Dashboard> {
-      const { data: dashboard, error } = await supabase
+      const { data: dashboard, error } = await insforge
         .from("dashboards")
         .select("id, workspace_id, name, description, created_by, created_at")
         .eq("id", id)
@@ -208,7 +208,7 @@ export function createDashboardService(
       }
 
       // Fetch widgets for this dashboard
-      const { data: widgets, error: widgetError } = await supabase
+      const { data: widgets, error: widgetError } = await insforge
         .from("widgets")
         .select("id, dashboard_id, type, config, pos_x, pos_y, width, height")
         .eq("dashboard_id", id);
@@ -227,7 +227,7 @@ export function createDashboardService(
       dashboardId: string,
       widget: CreateWidgetInput
     ): Promise<Widget> {
-      const { data: row, error } = await supabase
+      const { data: row, error } = await insforge
         .from("widgets")
         .insert({
           dashboard_id: dashboardId,
@@ -255,7 +255,7 @@ export function createDashboardService(
       // Update each widget's position individually
       // We verify each widget belongs to the specified dashboard
       for (const update of layout) {
-        const { error } = await supabase
+        const { error } = await insforge
           .from("widgets")
           .update({
             pos_x: update.position.x,
@@ -289,7 +289,7 @@ export function createDashboardService(
         assumptions: insight.assumptions,
       };
 
-      const { data: row, error } = await supabase
+      const { data: row, error } = await insforge
         .from("widgets")
         .insert({
           dashboard_id: dashboardId,

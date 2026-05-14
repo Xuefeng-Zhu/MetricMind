@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-// Mock the Supabase server client
-vi.mock("@/lib/supabase/server", () => ({
+// Mock the InsForge server client
+vi.mock("@/lib/insforge/server", () => ({
   createClient: vi.fn(),
 }));
 
@@ -17,7 +17,7 @@ vi.mock("@/lib/rbac/rbac-middleware", () => ({
   resolveWorkspaceRole: vi.fn(),
 }));
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/insforge/server";
 import { createSemanticLayerService } from "@/lib/semantic/semantic-layer-service";
 import { hasPermission, resolveWorkspaceRole } from "@/lib/rbac/rbac-middleware";
 import { POST } from "./route";
@@ -27,7 +27,7 @@ const mockCreateSemanticLayerService = createSemanticLayerService as ReturnType<
 const mockHasPermission = hasPermission as ReturnType<typeof vi.fn>;
 const mockResolveWorkspaceRole = resolveWorkspaceRole as ReturnType<typeof vi.fn>;
 
-function createMockSupabase(user: { id: string } | null = null) {
+function createMockInsForge(user: { id: string } | null = null) {
   const mockInsert = vi.fn().mockResolvedValue({ error: null });
   return {
     auth: {
@@ -49,7 +49,7 @@ describe("POST /api/semantic/metrics/[id]/certify", () => {
   });
 
   it("returns 401 when user is not authenticated", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase(null));
+    mockCreateClient.mockReturnValue(createMockInsForge(null));
 
     const request = new NextRequest(
       "http://localhost:3000/api/semantic/metrics/metric-1/certify",
@@ -67,7 +67,7 @@ describe("POST /api/semantic/metrics/[id]/certify", () => {
   });
 
   it("returns 403 when user role is analyst (requires admin+)", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("analyst");
     mockHasPermission.mockReturnValue(false);
 
@@ -101,8 +101,8 @@ describe("POST /api/semantic/metrics/[id]/certify", () => {
       created_by: "user-2",
     };
 
-    const mockSupabase = createMockSupabase({ id: "user-1" });
-    mockCreateClient.mockReturnValue(mockSupabase);
+    const mockInsForge = createMockInsForge({ id: "user-1" });
+    mockCreateClient.mockReturnValue(mockInsForge);
     mockResolveWorkspaceRole.mockResolvedValue("admin");
     mockHasPermission.mockReturnValue(true);
     mockCreateSemanticLayerService.mockReturnValue({
@@ -124,8 +124,8 @@ describe("POST /api/semantic/metrics/[id]/certify", () => {
     expect(body.metric).toEqual(mockMetric);
 
     // Verify audit event was logged
-    expect(mockSupabase.from).toHaveBeenCalledWith("audit_events");
-    expect(mockSupabase._mockInsert).toHaveBeenCalledWith({
+    expect(mockInsForge.from).toHaveBeenCalledWith("audit_events");
+    expect(mockInsForge._mockInsert).toHaveBeenCalledWith({
       workspace_id: "ws-1",
       actor_id: "user-1",
       action: "metric.certified",
@@ -136,7 +136,7 @@ describe("POST /api/semantic/metrics/[id]/certify", () => {
   });
 
   it("returns 404 when metric is not found", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("admin");
     mockHasPermission.mockReturnValue(true);
     mockCreateSemanticLayerService.mockReturnValue({

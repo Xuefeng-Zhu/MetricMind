@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-// Mock the Supabase server client
-vi.mock("@/lib/supabase/server", () => ({
+// Mock the InsForge server client
+vi.mock("@/lib/insforge/server", () => ({
   createClient: vi.fn(),
 }));
 
@@ -17,7 +17,7 @@ vi.mock("@/lib/rbac/rbac-middleware", () => ({
   resolveWorkspaceRole: vi.fn(),
 }));
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/insforge/server";
 import { createSemanticLayerService } from "@/lib/semantic/semantic-layer-service";
 import { hasPermission, resolveWorkspaceRole } from "@/lib/rbac/rbac-middleware";
 import { GET, POST } from "./route";
@@ -27,7 +27,7 @@ const mockCreateSemanticLayerService = createSemanticLayerService as ReturnType<
 const mockHasPermission = hasPermission as ReturnType<typeof vi.fn>;
 const mockResolveWorkspaceRole = resolveWorkspaceRole as ReturnType<typeof vi.fn>;
 
-function createMockSupabase(user: { id: string } | null = null) {
+function createMockInsForge(user: { id: string } | null = null) {
   return {
     auth: {
       getUser: vi.fn().mockResolvedValue({
@@ -64,7 +64,7 @@ describe("GET /api/semantic/entities", () => {
   });
 
   it("returns 401 when user is not authenticated", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase(null));
+    mockCreateClient.mockReturnValue(createMockInsForge(null));
 
     const request = createRequest("GET", "http://localhost:3000/api/semantic/entities", {
       headers: { "x-workspace-id": "ws-1" },
@@ -78,7 +78,7 @@ describe("GET /api/semantic/entities", () => {
   });
 
   it("returns 400 when workspace ID is missing", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
 
     const request = createRequest("GET");
 
@@ -90,7 +90,7 @@ describe("GET /api/semantic/entities", () => {
   });
 
   it("returns 403 when user is not a workspace member", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue(null);
 
     const request = createRequest("GET", "http://localhost:3000/api/semantic/entities", {
@@ -105,7 +105,7 @@ describe("GET /api/semantic/entities", () => {
   });
 
   it("returns 403 when user role is insufficient (viewer)", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("viewer");
     mockHasPermission.mockReturnValue(false);
 
@@ -125,7 +125,7 @@ describe("GET /api/semantic/entities", () => {
       { id: "e-1", workspace_id: "ws-1", data_source_id: "ds-1", name: "Customers", description: null, created_at: "2024-01-01" },
     ];
 
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("analyst");
     mockHasPermission.mockReturnValue(true);
     mockCreateSemanticLayerService.mockReturnValue({
@@ -150,7 +150,7 @@ describe("POST /api/semantic/entities", () => {
   });
 
   it("returns 401 when user is not authenticated", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase(null));
+    mockCreateClient.mockReturnValue(createMockInsForge(null));
 
     const request = createRequest("POST", "http://localhost:3000/api/semantic/entities", {
       headers: { "x-workspace-id": "ws-1" },
@@ -165,7 +165,7 @@ describe("POST /api/semantic/entities", () => {
   });
 
   it("returns 400 when required fields are missing", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("analyst");
     mockHasPermission.mockReturnValue(true);
 
@@ -191,7 +191,7 @@ describe("POST /api/semantic/entities", () => {
       created_at: "2024-01-01",
     };
 
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("analyst");
     mockHasPermission.mockReturnValue(true);
     mockCreateSemanticLayerService.mockReturnValue({
@@ -211,7 +211,7 @@ describe("POST /api/semantic/entities", () => {
   });
 
   it("returns 403 for viewer role", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
     mockResolveWorkspaceRole.mockResolvedValue("viewer");
     mockHasPermission.mockReturnValue(false);
 

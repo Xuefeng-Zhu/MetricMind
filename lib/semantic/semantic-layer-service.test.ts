@@ -4,8 +4,8 @@ import {
   SemanticLayerService,
 } from "./semantic-layer-service";
 
-// Mock Supabase client
-function createMockSupabase() {
+// Mock InsForge client
+function createMockInsForge() {
   const mockChain = {
     insert: vi.fn().mockReturnThis(),
     select: vi.fn().mockReturnThis(),
@@ -17,23 +17,23 @@ function createMockSupabase() {
     single: vi.fn().mockResolvedValue({ data: null, error: null }),
   };
 
-  const supabase = {
+  const insforge = {
     from: vi.fn().mockReturnValue(mockChain),
   };
 
-  return { supabase, mockChain };
+  return { insforge, mockChain };
 }
 
 describe("SemanticLayerService", () => {
   let service: SemanticLayerService;
-  let supabase: ReturnType<typeof createMockSupabase>["supabase"];
-  let mockChain: ReturnType<typeof createMockSupabase>["mockChain"];
+  let insforge: ReturnType<typeof createMockInsForge>["insforge"];
+  let mockChain: ReturnType<typeof createMockInsForge>["mockChain"];
 
   beforeEach(() => {
-    const mock = createMockSupabase();
-    supabase = mock.supabase;
+    const mock = createMockInsForge();
+    insforge = mock.insforge;
     mockChain = mock.mockChain;
-    service = createSemanticLayerService(supabase as any);
+    service = createSemanticLayerService(insforge as any);
   });
 
   // --- Entity CRUD ---
@@ -58,7 +58,7 @@ describe("SemanticLayerService", () => {
       });
 
       expect(result).toEqual(mockEntity);
-      expect(supabase.from).toHaveBeenCalledWith("semantic_entities");
+      expect(insforge.from).toHaveBeenCalledWith("semantic_entities");
     });
 
     it("should create entity with null description when not provided", async () => {
@@ -179,7 +179,7 @@ describe("SemanticLayerService", () => {
       });
 
       expect(result).toEqual(mockDimension);
-      expect(supabase.from).toHaveBeenCalledWith("dimensions");
+      expect(insforge.from).toHaveBeenCalledWith("dimensions");
     });
 
     it("should throw on database error", async () => {
@@ -221,7 +221,7 @@ describe("SemanticLayerService", () => {
       });
 
       expect(result).toEqual(mockMeasure);
-      expect(supabase.from).toHaveBeenCalledWith("measures");
+      expect(insforge.from).toHaveBeenCalledWith("measures");
     });
 
     it("should throw on database error", async () => {
@@ -250,7 +250,7 @@ describe("SemanticLayerService", () => {
       // Third call: dimensions for target entity
       // Fourth call: measures for target entity
       let fromCallCount = 0;
-      supabase.from.mockImplementation((table: string) => {
+      insforge.from.mockImplementation((table: string) => {
         fromCallCount++;
         const chain = {
           select: vi.fn().mockReturnThis(),
@@ -303,7 +303,7 @@ describe("SemanticLayerService", () => {
 
     it("should return invalid when source column does not exist", async () => {
       let fromCallCount = 0;
-      supabase.from.mockImplementation(() => {
+      insforge.from.mockImplementation(() => {
         fromCallCount++;
         const chain = {
           select: vi.fn().mockReturnThis(),
@@ -348,7 +348,7 @@ describe("SemanticLayerService", () => {
 
     it("should return invalid when target column does not exist", async () => {
       let fromCallCount = 0;
-      supabase.from.mockImplementation(() => {
+      insforge.from.mockImplementation(() => {
         fromCallCount++;
         const chain = {
           select: vi.fn().mockReturnThis(),
@@ -393,7 +393,7 @@ describe("SemanticLayerService", () => {
 
     it("should return multiple errors when both columns are invalid", async () => {
       let fromCallCount = 0;
-      supabase.from.mockImplementation(() => {
+      insforge.from.mockImplementation(() => {
         fromCallCount++;
         const chain = {
           select: vi.fn().mockReturnThis(),
@@ -421,7 +421,7 @@ describe("SemanticLayerService", () => {
     it("should throw when join validation fails", async () => {
       // Mock validateJoin to return invalid (no columns on entities)
       let fromCallCount = 0;
-      supabase.from.mockImplementation(() => {
+      insforge.from.mockImplementation(() => {
         fromCallCount++;
         const chain = {
           insert: vi.fn().mockReturnThis(),
@@ -476,7 +476,7 @@ describe("SemanticLayerService", () => {
       expect(result.certified).toBe(false);
       expect(result.certified_by).toBeNull();
       expect(result.certified_at).toBeNull();
-      expect(supabase.from).toHaveBeenCalledWith("metrics");
+      expect(insforge.from).toHaveBeenCalledWith("metrics");
     });
 
     it("should throw on database error", async () => {
@@ -517,7 +517,7 @@ describe("SemanticLayerService", () => {
       expect(result.certified).toBe(true);
       expect(result.certified_by).toBe("admin-1");
       expect(result.certified_at).not.toBeNull();
-      expect(supabase.from).toHaveBeenCalledWith("metrics");
+      expect(insforge.from).toHaveBeenCalledWith("metrics");
     });
 
     it("should throw when metric not found", async () => {
@@ -587,7 +587,7 @@ describe("SemanticLayerService", () => {
       });
 
       expect(result).toEqual(mockTerm);
-      expect(supabase.from).toHaveBeenCalledWith("glossary_terms");
+      expect(insforge.from).toHaveBeenCalledWith("glossary_terms");
     });
 
     it("should handle duplicate name error gracefully", async () => {
@@ -675,8 +675,8 @@ describe("SemanticLayerService", () => {
         },
       ];
 
-      // resolveTerms calls supabase.from("glossary_terms").select(...).eq(...)
-      supabase.from.mockImplementation(() => ({
+      // resolveTerms calls insforge.from("glossary_terms").select(...).eq(...)
+      insforge.from.mockImplementation(() => ({
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockResolvedValue({ data: mockTerms, error: null }),
       }));
@@ -692,7 +692,7 @@ describe("SemanticLayerService", () => {
     });
 
     it("should return empty array when no terms match", async () => {
-      supabase.from.mockImplementation(() => ({
+      insforge.from.mockImplementation(() => ({
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockResolvedValue({ data: [], error: null }),
       }));
@@ -717,7 +717,7 @@ describe("SemanticLayerService", () => {
         },
       ];
 
-      supabase.from.mockImplementation(() => ({
+      insforge.from.mockImplementation(() => ({
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockResolvedValue({ data: mockTerms, error: null }),
       }));

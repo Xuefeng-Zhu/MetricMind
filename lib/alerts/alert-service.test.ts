@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createAlertService, CreateAlertInput } from "./alert-service";
-import { SupabaseClient } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 
-function createMockSupabase(overrides: { from?: Record<string, any>; rpc?: any } = {}) {
+function createMockInsForge(overrides: { from?: Record<string, any>; rpc?: any } = {}) {
   const fromMocks = overrides.from ?? {};
 
   return {
@@ -19,7 +19,7 @@ function createMockSupabase(overrides: { from?: Record<string, any>; rpc?: any }
       };
     }),
     rpc: overrides.rpc ?? vi.fn().mockResolvedValue({ data: null, error: null }),
-  } as unknown as SupabaseClient;
+  } as unknown as InsForgeDatabaseClient;
 }
 
 describe("AlertService", () => {
@@ -43,11 +43,11 @@ describe("AlertService", () => {
         single: vi.fn().mockResolvedValue({ data: mockAlert, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { alerts: alertsBuilder, audit_events: { insert: vi.fn().mockResolvedValue({ data: null, error: null }) } },
       });
 
-      const service = createAlertService(supabase);
+      const service = createAlertService(insforge);
       const result = await service.createAlert("ws-1", {
         metricId: "metric-1",
         conditionType: "threshold_above",
@@ -89,11 +89,11 @@ describe("AlertService", () => {
         single: vi.fn().mockResolvedValue({ data: mockAlert, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { alerts: alertsBuilder, audit_events: { insert: vi.fn().mockResolvedValue({ data: null, error: null }) } },
       });
 
-      const service = createAlertService(supabase);
+      const service = createAlertService(insforge);
       const result = await service.createAlert("ws-1", {
         metricId: "metric-2",
         conditionType: "threshold_below",
@@ -124,11 +124,11 @@ describe("AlertService", () => {
         single: vi.fn().mockResolvedValue({ data: mockAlert, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { alerts: alertsBuilder, audit_events: { insert: vi.fn().mockResolvedValue({ data: null, error: null }) } },
       });
 
-      const service = createAlertService(supabase);
+      const service = createAlertService(insforge);
       const result = await service.createAlert("ws-1", {
         metricId: "metric-3",
         conditionType: "anomaly",
@@ -140,8 +140,8 @@ describe("AlertService", () => {
     });
 
     it("throws error when threshold_above alert has no thresholdValue", async () => {
-      const supabase = createMockSupabase();
-      const service = createAlertService(supabase);
+      const insforge = createMockInsForge();
+      const service = createAlertService(insforge);
 
       await expect(
         service.createAlert("ws-1", {
@@ -153,8 +153,8 @@ describe("AlertService", () => {
     });
 
     it("throws error when threshold_below alert has no thresholdValue", async () => {
-      const supabase = createMockSupabase();
-      const service = createAlertService(supabase);
+      const insforge = createMockInsForge();
+      const service = createAlertService(insforge);
 
       await expect(
         service.createAlert("ws-1", {
@@ -175,11 +175,11 @@ describe("AlertService", () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { alerts: alertsBuilder, audit_events: { insert: vi.fn().mockResolvedValue({ data: null, error: null }) } },
       });
 
-      const service = createAlertService(supabase);
+      const service = createAlertService(insforge);
 
       await expect(
         service.createAlert("ws-1", {
@@ -225,11 +225,11 @@ describe("AlertService", () => {
         order: vi.fn().mockResolvedValue({ data: mockAlerts, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { alerts: alertsBuilder, audit_events: { insert: vi.fn().mockResolvedValue({ data: null, error: null }) } },
       });
 
-      const service = createAlertService(supabase);
+      const service = createAlertService(insforge);
       const result = await service.getAlerts("ws-1");
 
       expect(result).toHaveLength(2);
@@ -245,11 +245,11 @@ describe("AlertService", () => {
         order: vi.fn().mockResolvedValue({ data: [], error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { alerts: alertsBuilder, audit_events: { insert: vi.fn().mockResolvedValue({ data: null, error: null }) } },
       });
 
-      const service = createAlertService(supabase);
+      const service = createAlertService(insforge);
       const result = await service.getAlerts("ws-1");
 
       expect(result).toEqual([]);
@@ -265,11 +265,11 @@ describe("AlertService", () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { alerts: alertsBuilder, audit_events: { insert: vi.fn().mockResolvedValue({ data: null, error: null }) } },
       });
 
-      const service = createAlertService(supabase);
+      const service = createAlertService(insforge);
 
       await expect(service.getAlerts("ws-1")).rejects.toThrow(
         "Failed to fetch alerts: Connection timeout"
@@ -295,11 +295,11 @@ describe("AlertService", () => {
         return alertsBuilder;
       });
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { alerts: alertsBuilder, audit_events: { insert: vi.fn().mockResolvedValue({ data: null, error: null }) } },
       });
 
-      const service = createAlertService(supabase);
+      const service = createAlertService(insforge);
       const result = await service.checkAlerts("ws-1");
 
       expect(result).toEqual([]);
@@ -348,7 +348,7 @@ describe("AlertService", () => {
         insert: vi.fn().mockResolvedValue({ data: null, error: null }),
       };
 
-      const supabase = {
+      const insforge = {
         from: vi.fn((table: string) => {
           if (table === "alerts") return alertsBuilder;
           if (table === "metrics") return metricsBuilder;
@@ -360,9 +360,9 @@ describe("AlertService", () => {
           data: [{ total: 150 }],
           error: null,
         }),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
-      const service = createAlertService(supabase);
+      const service = createAlertService(insforge);
       const result = await service.checkAlerts("ws-1");
 
       expect(result).toHaveLength(1);
@@ -423,7 +423,7 @@ describe("AlertService", () => {
         }),
       };
 
-      const supabase = {
+      const insforge = {
         from: vi.fn((table: string) => {
           if (table === "alerts") return alertsBuilder;
           if (table === "metrics") return metricsBuilder;
@@ -433,9 +433,9 @@ describe("AlertService", () => {
           data: [{ total: 80 }], // Below threshold of 100
           error: null,
         }),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
-      const service = createAlertService(supabase);
+      const service = createAlertService(insforge);
       const result = await service.checkAlerts("ws-1");
 
       expect(result).toEqual([]);
@@ -484,7 +484,7 @@ describe("AlertService", () => {
         insert: vi.fn().mockResolvedValue({ data: null, error: null }),
       };
 
-      const supabase = {
+      const insforge = {
         from: vi.fn((table: string) => {
           if (table === "alerts") return alertsBuilder;
           if (table === "metrics") return metricsBuilder;
@@ -496,9 +496,9 @@ describe("AlertService", () => {
           data: [{ count: 30 }], // Below threshold of 50
           error: null,
         }),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
-      const service = createAlertService(supabase);
+      const service = createAlertService(insforge);
       const result = await service.checkAlerts("ws-1");
 
       expect(result).toHaveLength(1);
@@ -542,16 +542,16 @@ describe("AlertService", () => {
         }),
       };
 
-      const supabase = {
+      const insforge = {
         from: vi.fn((table: string) => {
           if (table === "alerts") return alertsBuilder;
           if (table === "metrics") return metricsBuilder;
           return { insert: vi.fn().mockResolvedValue({ data: null, error: null }) };
         }),
         rpc: vi.fn().mockResolvedValue({ data: null, error: null }),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
-      const service = createAlertService(supabase);
+      const service = createAlertService(insforge);
       const result = await service.checkAlerts("ws-1");
 
       expect(result).toEqual([]);
@@ -600,7 +600,7 @@ describe("AlertService", () => {
         insert: vi.fn().mockResolvedValue({ data: null, error: null }),
       };
 
-      const supabase = {
+      const insforge = {
         from: vi.fn((table: string) => {
           if (table === "alerts") return alertsBuilder;
           if (table === "metrics") return metricsBuilder;
@@ -612,9 +612,9 @@ describe("AlertService", () => {
           data: [{ total: 200 }],
           error: null,
         }),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
-      const service = createAlertService(supabase);
+      const service = createAlertService(insforge);
       await service.checkAlerts("ws-1");
 
       expect(auditBuilder.insert).toHaveBeenCalledWith(

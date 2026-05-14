@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { SupabaseClient } from '@supabase/supabase-js';
+import { InsForgeDatabaseClient } from '@/lib/insforge/types';
 import {
   createAIService,
   buildSQLPrompt,
@@ -14,15 +14,15 @@ import {
 } from './ai-service';
 import { AIProvider, CompletionResult, Message } from './provider';
 
-// --- Mock Supabase ---
+// --- Mock InsForge ---
 
-function createMockSupabase(): SupabaseClient {
+function createMockInsForge(): InsForgeDatabaseClient {
   const insertMock = vi.fn().mockResolvedValue({ data: null, error: null });
   return {
     from: vi.fn().mockReturnValue({
       insert: insertMock,
     }),
-  } as unknown as SupabaseClient;
+  } as unknown as InsForgeDatabaseClient;
 }
 
 // --- Mock Provider ---
@@ -88,12 +88,12 @@ const testSemanticContext: SemanticContext = {
 };
 
 describe('AI Service', () => {
-  let supabase: SupabaseClient;
+  let insforge: InsForgeDatabaseClient;
   let service: AIService;
 
   beforeEach(() => {
-    supabase = createMockSupabase();
-    service = createAIService(supabase);
+    insforge = createMockInsForge();
+    service = createAIService(insforge);
   });
 
   describe('generateSQL', () => {
@@ -171,8 +171,8 @@ describe('AI Service', () => {
         workspaceId: 'ws-1',
       });
 
-      expect(supabase.from).toHaveBeenCalledWith('ai_traces');
-      const fromResult = (supabase.from as ReturnType<typeof vi.fn>).mock.results[0].value;
+      expect(insforge.from).toHaveBeenCalledWith('ai_traces');
+      const fromResult = (insforge.from as ReturnType<typeof vi.fn>).mock.results[0].value;
       expect(fromResult.insert).toHaveBeenCalledWith(
         expect.objectContaining({
           workspace_id: 'ws-1',
@@ -290,8 +290,8 @@ describe('AI Service', () => {
     });
 
     it('does not throw on provider error - returns graceful message', async () => {
-      const failingSupabase = createMockSupabase();
-      const failingService = createAIService(failingSupabase, {
+      const failingInsForge = createMockInsForge();
+      const failingService = createAIService(failingInsForge, {
         endpoint: 'https://invalid.example.com',
         model: 'test',
         apiKey: 'fake-key',
@@ -300,7 +300,7 @@ describe('AI Service', () => {
       // The service should not throw even with a bad config
       // (the actual HTTP call would fail, but we're testing the retry wrapper)
       // For this test, we use the mock provider which doesn't actually make HTTP calls
-      const mockService = createAIService(failingSupabase);
+      const mockService = createAIService(failingInsForge);
       const result = await mockService.generateSQL({
         question: 'test',
         semanticContext: testSemanticContext,

@@ -10,7 +10,7 @@
  * - Server-side only execution (never expose API keys to client)
  */
 
-import { SupabaseClient } from '@supabase/supabase-js';
+import { InsForgeDatabaseClient } from '@/lib/insforge/types';
 import { AIProvider, AIProviderConfig, Message } from './provider';
 import { createAIProvider } from './provider-factory';
 
@@ -279,14 +279,14 @@ export function generateCitations(sql: string, semanticContext: SemanticContext)
  * Stores an AI trace record in the database.
  */
 async function storeTrace(
-  supabase: SupabaseClient,
+  insforge: InsForgeDatabaseClient,
   trace: AITrace,
   workspaceId: string,
   confidence?: number,
   citations?: Citation[],
   assumptions?: string[]
 ): Promise<void> {
-  await supabase.from('ai_traces').insert({
+  await insforge.from('ai_traces').insert({
     id: trace.id,
     workspace_id: workspaceId,
     prompt_template: trace.promptTemplate,
@@ -333,10 +333,10 @@ export async function callWithRetry(
 /**
  * Creates an AIService instance.
  *
- * @param supabase - Supabase client for storing AI traces
+ * @param insforge - InsForge client for storing AI traces
  * @param config - Optional AI provider configuration. If not provided, uses MockAIProvider.
  */
-export function createAIService(supabase: SupabaseClient, config?: AIProviderConfig): AIService {
+export function createAIService(insforge: InsForgeDatabaseClient, config?: AIProviderConfig): AIService {
   const provider = createAIProvider(config);
 
   return {
@@ -375,7 +375,7 @@ export function createAIService(supabase: SupabaseClient, config?: AIProviderCon
         };
 
         // Store trace even on error
-        await storeTrace(supabase, trace, input.workspaceId, 0, [], []);
+        await storeTrace(insforge, trace, input.workspaceId, 0, [], []);
 
         return {
           sql: '',
@@ -404,7 +404,7 @@ export function createAIService(supabase: SupabaseClient, config?: AIProviderCon
       };
 
       // Store trace record
-      await storeTrace(supabase, trace, input.workspaceId, confidence, citations, assumptions);
+      await storeTrace(insforge, trace, input.workspaceId, confidence, citations, assumptions);
 
       return { sql, confidence, citations, assumptions, trace };
     },
@@ -437,7 +437,7 @@ export function createAIService(supabase: SupabaseClient, config?: AIProviderCon
           timestamp: new Date().toISOString(),
         };
 
-        await storeTrace(supabase, trace, input.workspaceId);
+        await storeTrace(insforge, trace, input.workspaceId);
 
         return {
           summary: 'Unable to generate summary at this time. Please try again later.',
@@ -458,7 +458,7 @@ export function createAIService(supabase: SupabaseClient, config?: AIProviderCon
         timestamp: new Date().toISOString(),
       };
 
-      await storeTrace(supabase, trace, input.workspaceId);
+      await storeTrace(insforge, trace, input.workspaceId);
 
       return { summary, trace };
     },
@@ -493,7 +493,7 @@ export function createAIService(supabase: SupabaseClient, config?: AIProviderCon
           timestamp: new Date().toISOString(),
         };
 
-        await storeTrace(supabase, trace, input.workspaceId);
+        await storeTrace(insforge, trace, input.workspaceId);
 
         return {
           response: 'I apologize, but I am unable to respond at this time. Please try again later.',
@@ -514,7 +514,7 @@ export function createAIService(supabase: SupabaseClient, config?: AIProviderCon
         timestamp: new Date().toISOString(),
       };
 
-      await storeTrace(supabase, trace, input.workspaceId);
+      await storeTrace(insforge, trace, input.workspaceId);
 
       return { response, trace };
     },

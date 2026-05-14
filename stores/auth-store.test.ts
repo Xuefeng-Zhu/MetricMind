@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useAuthStore } from "./auth-store";
-import { User, Session } from "@supabase/supabase-js";
+import { User, Session } from "@/lib/insforge/types";
 
 function createMockUser(): User {
   return {

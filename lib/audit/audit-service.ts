@@ -1,4 +1,4 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 
 export type AuditAction =
   | "user.login"
@@ -38,10 +38,10 @@ export interface AuditService {
   getEvents(workspaceId: string, filters?: AuditFilters): Promise<AuditEvent[]>;
 }
 
-export function createAuditService(supabase: SupabaseClient): AuditService {
+export function createAuditService(insforge: InsForgeDatabaseClient): AuditService {
   return {
     async log(event: Omit<AuditEvent, "id" | "timestamp">): Promise<void> {
-      const { error } = await supabase.from("audit_events").insert({
+      const { error } = await insforge.from("audit_events").insert({
         workspace_id: event.workspace_id,
         actor_id: event.actor_id,
         action: event.action,
@@ -59,7 +59,7 @@ export function createAuditService(supabase: SupabaseClient): AuditService {
       workspaceId: string,
       filters?: AuditFilters
     ): Promise<AuditEvent[]> {
-      let query = supabase
+      let query = insforge
         .from("audit_events")
         .select("id, workspace_id, actor_id, action, target_type, target_id, metadata, created_at")
         .eq("workspace_id", workspaceId)

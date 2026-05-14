@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createDashboardService } from "./dashboard-service";
-import { SupabaseClient } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 
 // Helper to create a chainable mock query builder
 function createQueryBuilder(result: { data: any; error: any }) {
@@ -18,7 +18,7 @@ function createQueryBuilder(result: { data: any; error: any }) {
   return builder;
 }
 
-function createMockSupabase(overrides: {
+function createMockInsForge(overrides: {
   from?: Record<string, any>;
 } = {}) {
   const fromMocks = overrides.from ?? {};
@@ -30,7 +30,7 @@ function createMockSupabase(overrides: {
       }
       return createQueryBuilder({ data: null, error: null });
     }),
-  } as unknown as SupabaseClient;
+  } as unknown as InsForgeDatabaseClient;
 }
 
 describe("DashboardService", () => {
@@ -51,11 +51,11 @@ describe("DashboardService", () => {
         single: vi.fn().mockResolvedValue({ data: mockDashboard, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { dashboards: dashboardsBuilder },
       });
 
-      const service = createDashboardService(supabase);
+      const service = createDashboardService(insforge);
       const result = await service.create("ws-1", {
         name: "Revenue Dashboard",
         description: "Monthly revenue overview",
@@ -87,11 +87,11 @@ describe("DashboardService", () => {
         single: vi.fn().mockResolvedValue({ data: mockDashboard, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { dashboards: dashboardsBuilder },
       });
 
-      const service = createDashboardService(supabase);
+      const service = createDashboardService(insforge);
       const result = await service.create("ws-1", {
         name: "Quick Dashboard",
         createdBy: "user-1",
@@ -116,11 +116,11 @@ describe("DashboardService", () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { dashboards: dashboardsBuilder },
       });
 
-      const service = createDashboardService(supabase);
+      const service = createDashboardService(insforge);
       await expect(
         service.create("ws-1", { name: "Test", createdBy: "user-1" })
       ).rejects.toThrow("Database error");
@@ -182,14 +182,14 @@ describe("DashboardService", () => {
         in: vi.fn().mockResolvedValue({ data: mockWidgets, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: {
           dashboards: dashboardsBuilder,
           widgets: widgetsBuilder,
         },
       });
 
-      const service = createDashboardService(supabase);
+      const service = createDashboardService(insforge);
       const result = await service.getDashboards("ws-1");
 
       expect(result).toHaveLength(2);
@@ -206,11 +206,11 @@ describe("DashboardService", () => {
         order: vi.fn().mockResolvedValue({ data: [], error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { dashboards: dashboardsBuilder },
       });
 
-      const service = createDashboardService(supabase);
+      const service = createDashboardService(insforge);
       const result = await service.getDashboards("ws-1");
 
       expect(result).toEqual([]);
@@ -261,14 +261,14 @@ describe("DashboardService", () => {
         eq: vi.fn().mockResolvedValue({ data: mockWidgets, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: {
           dashboards: dashboardsBuilder,
           widgets: widgetsBuilder,
         },
       });
 
-      const service = createDashboardService(supabase);
+      const service = createDashboardService(insforge);
       const result = await service.getDashboard("dash-1");
 
       expect(result.id).toBe("dash-1");
@@ -287,11 +287,11 @@ describe("DashboardService", () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { dashboards: dashboardsBuilder },
       });
 
-      const service = createDashboardService(supabase);
+      const service = createDashboardService(insforge);
       await expect(service.getDashboard("dash-999")).rejects.toThrow("Not found");
     });
   });
@@ -315,11 +315,11 @@ describe("DashboardService", () => {
         single: vi.fn().mockResolvedValue({ data: mockWidgetRow, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { widgets: widgetsBuilder },
       });
 
-      const service = createDashboardService(supabase);
+      const service = createDashboardService(insforge);
       const result = await service.addWidget("dash-1", {
         type: "chart",
         config: { type: "line", data: [] },
@@ -358,11 +358,11 @@ describe("DashboardService", () => {
         single: vi.fn().mockResolvedValue({ data: mockWidgetRow, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { widgets: widgetsBuilder },
       });
 
-      const service = createDashboardService(supabase);
+      const service = createDashboardService(insforge);
       const result = await service.addWidget("dash-1", {
         type: "kpi",
         config: { value: 1234, label: "Total Users" },
@@ -383,11 +383,11 @@ describe("DashboardService", () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { widgets: widgetsBuilder },
       });
 
-      const service = createDashboardService(supabase);
+      const service = createDashboardService(insforge);
       await expect(
         service.addWidget("dash-999", {
           type: "chart",
@@ -406,11 +406,11 @@ describe("DashboardService", () => {
         then: (resolve: any) => resolve({ data: null, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { widgets: widgetsBuilder },
       });
 
-      const service = createDashboardService(supabase);
+      const service = createDashboardService(insforge);
       await service.updateLayout("dash-1", [
         { widgetId: "widget-1", position: { x: 0, y: 0, w: 6, h: 4 } },
         { widgetId: "widget-2", position: { x: 6, y: 0, w: 6, h: 4 } },
@@ -438,11 +438,11 @@ describe("DashboardService", () => {
           resolve({ data: null, error: { message: "Widget not found" } }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { widgets: widgetsBuilder },
       });
 
-      const service = createDashboardService(supabase);
+      const service = createDashboardService(insforge);
       await expect(
         service.updateLayout("dash-1", [
           { widgetId: "widget-999", position: { x: 0, y: 0, w: 4, h: 3 } },
@@ -479,11 +479,11 @@ describe("DashboardService", () => {
         single: vi.fn().mockResolvedValue({ data: mockWidgetRow, error: null }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { widgets: widgetsBuilder },
       });
 
-      const service = createDashboardService(supabase);
+      const service = createDashboardService(insforge);
       const result = await service.saveInsight("dash-1", {
         question: "What is our MRR?",
         sql: "SELECT sum(amount) as mrr FROM invoices WHERE status = 'paid'",
@@ -518,11 +518,11 @@ describe("DashboardService", () => {
         }),
       };
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         from: { widgets: widgetsBuilder },
       });
 
-      const service = createDashboardService(supabase);
+      const service = createDashboardService(insforge);
       await expect(
         service.saveInsight("dash-1", {
           question: "Test?",

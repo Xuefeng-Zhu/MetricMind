@@ -2,7 +2,7 @@
  * API Response Types
  *
  * These types mirror the shapes returned by existing API routes.
- * Fields use snake_case to match Supabase column naming conventions.
+ * Fields use snake_case to match InsForge column naming conventions.
  */
 
 // From GET /api/data-sources

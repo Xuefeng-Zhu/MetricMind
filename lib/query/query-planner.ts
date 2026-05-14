@@ -14,7 +14,7 @@
  * Requirements: 7.3, 8.2, 9.1, 9.2, 10.1, 11.1, 11.2, 11.3, 11.4
  */
 
-import { SupabaseClient } from '@supabase/supabase-js';
+import { InsForgeDatabaseClient } from '@/lib/insforge/types';
 import { AIProviderConfig } from '../ai/provider';
 import { AIService, AITrace, Citation, createAIService, SemanticContext } from '../ai/ai-service';
 import { createSemanticLayerService, SemanticLayerService } from '../semantic/semantic-layer-service';
@@ -90,17 +90,17 @@ export function extractTermsFromQuestion(question: string): string[] {
  * Build a GovernanceContext from workspace semantic layer data.
  */
 async function buildGovernanceContext(
-  supabase: SupabaseClient,
+  insforge: InsForgeDatabaseClient,
   workspaceId: string
 ): Promise<GovernanceContext> {
   // Get allowed tables from semantic entities (data source names)
-  const { data: entities } = await supabase
+  const { data: entities } = await insforge
     .from('semantic_entities')
     .select('name')
     .eq('workspace_id', workspaceId);
 
   // Get data source names as allowed tables
-  const { data: dataSources } = await supabase
+  const { data: dataSources } = await insforge
     .from('data_sources')
     .select('name')
     .eq('workspace_id', workspaceId);
@@ -111,7 +111,7 @@ async function buildGovernanceContext(
   ];
 
   // Get all columns from dimensions and measures
-  const { data: dimensions } = await supabase
+  const { data: dimensions } = await insforge
     .from('dimensions')
     .select('source_column, entity_id')
     .in(
@@ -119,7 +119,7 @@ async function buildGovernanceContext(
       (entities || []).map((e: { name: string }) => e.name)
     );
 
-  const { data: measures } = await supabase
+  const { data: measures } = await insforge
     .from('measures')
     .select('source_column, entity_id')
     .in(
@@ -205,16 +205,16 @@ function inferColumnTypes(rows: Record<string, unknown>[]): { name: string; type
 /**
  * Creates a QueryPlanner instance.
  *
- * @param supabase - Supabase client for database operations
+ * @param insforge - InsForge client for database operations
  * @param aiConfig - Optional AI provider configuration
  */
 export function createQueryPlanner(
-  supabase: SupabaseClient,
+  insforge: InsForgeDatabaseClient,
   aiConfig?: AIProviderConfig
 ): QueryPlanner {
-  const aiService: AIService = createAIService(supabase, aiConfig);
-  const semanticLayerService: SemanticLayerService = createSemanticLayerService(supabase);
-  const governanceEngine: GovernanceEngine = createGovernanceEngine(supabase);
+  const aiService: AIService = createAIService(insforge, aiConfig);
+  const semanticLayerService: SemanticLayerService = createSemanticLayerService(insforge);
+  const governanceEngine: GovernanceEngine = createGovernanceEngine(insforge);
 
   return {
     async processQuestion(input: QuestionInput): Promise<QueryResult> {
@@ -299,7 +299,7 @@ export function createQueryPlanner(
       }
 
       // Step 4: Validate SQL via Governance Engine
-      const governanceContext = await buildGovernanceContext(supabase, workspaceId);
+      const governanceContext = await buildGovernanceContext(insforge, workspaceId);
       const validationResult = await governanceEngine.validateSQL(sqlResult.sql, governanceContext);
 
       // Step 5: If validation fails, return error with governance explanation
@@ -307,7 +307,7 @@ export function createQueryPlanner(
         const errorMessages = validationResult.errors.map((e) => e.message).join('; ');
 
         // Store a failed query run record
-        await storeQueryRun(supabase, {
+        await storeQueryRun(insforge, {
           workspaceId,
           sql: sqlResult.sql,
           status: 'rejected',
@@ -323,7 +323,7 @@ export function createQueryPlanner(
       const executionResult = await this.executeSQL(workspaceId, sqlResult.sql);
 
       // Step 7: Store query run record
-      await storeQueryRun(supabase, {
+      await storeQueryRun(insforge, {
         workspaceId,
         sql: sqlResult.sql,
         status: 'completed',
@@ -359,10 +359,10 @@ export function createQueryPlanner(
         // Execute with 30-second timeout using statement_timeout
         const timeoutSQL = `SET LOCAL statement_timeout = '${QUERY_TIMEOUT_MS}ms'; ${sql}`;
 
-        // Use Supabase's rpc to execute raw SQL
+        // Use InsForge's rpc to execute raw SQL
         // We use a custom RPC function or fall back to direct query
         const { data, error } = await Promise.race([
-          supabase.rpc('execute_readonly_query', {
+          insforge.rpc('execute_readonly_query', {
             query_text: sql,
             workspace_id: workspaceId,
           }),
@@ -395,7 +395,7 @@ export function createQueryPlanner(
         // Check if it's a timeout
         if (executionTimeMs >= QUERY_TIMEOUT_MS - 100) {
           // Store timeout query run
-          await storeQueryRun(supabase, {
+          await storeQueryRun(insforge, {
             workspaceId,
             sql,
             status: 'timeout',
@@ -408,7 +408,7 @@ export function createQueryPlanner(
         }
 
         // Store failed query run
-        await storeQueryRun(supabase, {
+        await storeQueryRun(insforge, {
           workspaceId,
           sql,
           status: 'error',
@@ -440,11 +440,11 @@ interface QueryRunInput {
  * Store a query run record in the database.
  */
 async function storeQueryRun(
-  supabase: SupabaseClient,
+  insforge: InsForgeDatabaseClient,
   input: QueryRunInput
 ): Promise<void> {
   try {
-    await supabase.from('query_runs').insert({
+    await insforge.from('query_runs').insert({
       workspace_id: input.workspaceId,
       sql: input.sql,
       status: input.status,

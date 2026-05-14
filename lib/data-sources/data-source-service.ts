@@ -1,4 +1,4 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 
 export interface DataSource {
   id: string;
@@ -87,7 +87,7 @@ export function suggestSemanticType(
 }
 
 export function createDataSourceService(
-  supabase: SupabaseClient
+  insforge: InsForgeDatabaseClient
 ): DataSourceService {
   return {
     async uploadCSV(workspaceId: string, file: File): Promise<DataSource> {
@@ -99,7 +99,7 @@ export function createDataSourceService(
       }
 
       // 2. Create data_source record with status 'processing'
-      const { data: dataSource, error: createError } = await supabase
+      const { data: dataSource, error: createError } = await insforge
         .from("data_sources")
         .insert({
           workspace_id: workspaceId,
@@ -137,7 +137,7 @@ export function createDataSourceService(
         }));
 
         if (columnInserts.length > 0) {
-          const { error: colError } = await supabase
+          const { error: colError } = await insforge
             .from("dataset_columns")
             .insert(columnInserts);
 
@@ -149,7 +149,7 @@ export function createDataSourceService(
         }
 
         // 5. Update data_source status to 'ready' with row_count
-        const { data: updatedSource, error: updateError } = await supabase
+        const { data: updatedSource, error: updateError } = await insforge
           .from("data_sources")
           .update({
             status: "ready",
@@ -170,7 +170,7 @@ export function createDataSourceService(
         return updatedSource as DataSource;
       } catch (error) {
         // On failure, update status to 'error'
-        await supabase
+        await insforge
           .from("data_sources")
           .update({ status: "error" })
           .eq("id", dataSource.id);
@@ -180,7 +180,7 @@ export function createDataSourceService(
     },
 
     async getDataSources(workspaceId: string): Promise<DataSource[]> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from("data_sources")
         .select(
           "id, workspace_id, name, type, status, row_count, file_size_bytes, created_at"
@@ -196,7 +196,7 @@ export function createDataSourceService(
     },
 
     async getDataSource(id: string): Promise<DataSource> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from("data_sources")
         .select(
           "id, workspace_id, name, type, status, row_count, file_size_bytes, created_at"
@@ -225,7 +225,7 @@ export function createDataSourceService(
       const createdSources: DataSource[] = [];
 
       for (const table of demoTables) {
-        const { data, error } = await supabase
+        const { data, error } = await insforge
           .from("data_sources")
           .insert({
             workspace_id: workspaceId,
@@ -254,7 +254,7 @@ export function createDataSourceService(
     },
 
     async getColumns(dataSourceId: string): Promise<ColumnMetadata[]> {
-      const { data, error } = await supabase
+      const { data, error } = await insforge
         .from("dataset_columns")
         .select("name, data_type, nullable, suggested_semantic_type")
         .eq("data_source_id", dataSourceId)

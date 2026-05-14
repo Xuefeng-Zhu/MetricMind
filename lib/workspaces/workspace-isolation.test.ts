@@ -13,7 +13,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
-import { SupabaseClient } from "@supabase/supabase-js";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 import {
   validateWorkspaceId,
   switchWorkspace,
@@ -25,12 +25,12 @@ import { createDataSourceService } from "@/lib/data-sources/data-source-service"
 import { createDashboardService } from "@/lib/dashboards/dashboard-service";
 import { createWorkspaceService } from "./workspace-service";
 
-// Mock Supabase server client for RBAC tests
-vi.mock("@/lib/supabase/server", () => ({
+// Mock InsForge server client for RBAC tests
+vi.mock("@/lib/insforge/server", () => ({
   createClient: vi.fn(),
 }));
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/insforge/server";
 
 const mockCreateClient = createClient as ReturnType<typeof vi.fn>;
 
@@ -115,7 +115,7 @@ import { useConversationStore } from "@/stores/conversation-store";
 
 // --- Helpers ---
 
-function createMockSupabase(overrides: {
+function createMockInsForge(overrides: {
   getUser?: any;
   workspaceMemberQuery?: any;
   from?: Record<string, any>;
@@ -144,7 +144,7 @@ function createMockSupabase(overrides: {
       }
       return defaultFrom();
     }),
-  } as unknown as SupabaseClient;
+  } as unknown as InsForgeDatabaseClient;
 }
 
 function createChainableBuilder(result: { data: any; error: any }) {
@@ -182,14 +182,14 @@ describe("Multi-Tenant Workspace Isolation", () => {
         order: vi.fn().mockResolvedValue({ data: mockData, error: null }),
       };
 
-      const supabase = {
+      const insforge = {
         from: vi.fn().mockReturnValue(builder),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
-      const service = createDataSourceService(supabase);
+      const service = createDataSourceService(insforge);
       await service.getDataSources(workspaceId);
 
-      expect(supabase.from).toHaveBeenCalledWith("data_sources");
+      expect(insforge.from).toHaveBeenCalledWith("data_sources");
       expect(builder.eq).toHaveBeenCalledWith("workspace_id", workspaceId);
     });
 
@@ -220,11 +220,11 @@ describe("Multi-Tenant Workspace Isolation", () => {
         }),
       };
 
-      const supabase = {
+      const insforge = {
         from: vi.fn().mockReturnValue(builder),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
-      const service = createDataSourceService(supabase);
+      const service = createDataSourceService(insforge);
 
       // Create a file with arrayBuffer support (jsdom File doesn't have it)
       const csvContent = "name,age\nAlice,30\nBob,25";
@@ -268,11 +268,11 @@ describe("Multi-Tenant Workspace Isolation", () => {
         }),
       };
 
-      const supabase = {
+      const insforge = {
         from: vi.fn().mockReturnValue(builder),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
-      const service = createDashboardService(supabase);
+      const service = createDashboardService(insforge);
       await service.create(workspaceId, {
         name: "Test Dashboard",
         createdBy: "user-1",
@@ -291,14 +291,14 @@ describe("Multi-Tenant Workspace Isolation", () => {
         order: vi.fn().mockResolvedValue({ data: [], error: null }),
       };
 
-      const supabase = {
+      const insforge = {
         from: vi.fn().mockReturnValue(builder),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
-      const service = createDashboardService(supabase);
+      const service = createDashboardService(insforge);
       await service.getDashboards(workspaceId);
 
-      expect(supabase.from).toHaveBeenCalledWith("dashboards");
+      expect(insforge.from).toHaveBeenCalledWith("dashboards");
       expect(builder.eq).toHaveBeenCalledWith("workspace_id", workspaceId);
     });
 
@@ -325,15 +325,15 @@ describe("Multi-Tenant Workspace Isolation", () => {
         }),
       };
 
-      const supabase = {
+      const insforge = {
         from: vi.fn((table: string) => {
           if (table === "workspaces") return workspacesBuilder;
           if (table === "workspace_members") return membersBuilder;
           return createChainableBuilder({ data: null, error: null });
         }),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
-      const service = createWorkspaceService(supabase);
+      const service = createWorkspaceService(insforge);
       await service.create("New Workspace", userId);
 
       expect(insertedMemberPayload[0]).toHaveProperty("workspace_id", "ws-new");
@@ -342,10 +342,10 @@ describe("Multi-Tenant Workspace Isolation", () => {
 
   describe("RBAC Middleware - Rejects requests without workspace_id", () => {
     it("returns 400 when x-workspace-id header is missing", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         getUser: { data: { user: { id: "user-1" } }, error: null },
       });
-      mockCreateClient.mockReturnValue(supabase);
+      mockCreateClient.mockReturnValue(insforge);
 
       const handler = vi.fn().mockResolvedValue(NextResponse.json({ ok: true }));
       const wrappedHandler = withRBAC({ requiredRole: "viewer" }, handler);
@@ -364,11 +364,11 @@ describe("Multi-Tenant Workspace Isolation", () => {
     });
 
     it("returns 403 when user is not a member of the workspace", async () => {
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         getUser: { data: { user: { id: "user-1" } }, error: null },
         workspaceMemberQuery: { data: null, error: { message: "Not found" } },
       });
-      mockCreateClient.mockReturnValue(supabase);
+      mockCreateClient.mockReturnValue(insforge);
 
       const handler = vi.fn().mockResolvedValue(NextResponse.json({ ok: true }));
       const wrappedHandler = withRBAC({ requiredRole: "viewer" }, handler);
@@ -390,12 +390,12 @@ describe("Multi-Tenant Workspace Isolation", () => {
       // User belongs to workspace A but tries to access workspace B
       const workspaceB = "550e8400-e29b-41d4-a716-446655440099";
 
-      const supabase = createMockSupabase({
+      const insforge = createMockInsForge({
         getUser: { data: { user: { id: "user-1" } }, error: null },
         // User is NOT a member of workspace B
         workspaceMemberQuery: { data: null, error: null },
       });
-      mockCreateClient.mockReturnValue(supabase);
+      mockCreateClient.mockReturnValue(insforge);
 
       const handler = vi.fn().mockResolvedValue(NextResponse.json({ ok: true }));
       const wrappedHandler = withRBAC({ requiredRole: "viewer" }, handler);
@@ -567,11 +567,11 @@ describe("Multi-Tenant Workspace Isolation", () => {
         }),
       };
 
-      const supabase = {
+      const insforge = {
         from: vi.fn().mockReturnValue(builder),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
-      const service = createDataSourceService(supabase);
+      const service = createDataSourceService(insforge);
       await service.loadDemoDataset(workspaceId);
 
       // All 6 demo tables should have workspace_id
@@ -592,20 +592,20 @@ describe("Multi-Tenant Workspace Isolation", () => {
         }),
       };
 
-      const supabase = {
+      const insforge = {
         from: vi.fn().mockReturnValue(builder),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
       const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       await logCrossWorkspaceViolation(
-        supabase,
+        insforge,
         "user-1",
         "workspace-a",
         "workspace-b"
       );
 
-      expect(supabase.from).toHaveBeenCalledWith("audit_events");
+      expect(insforge.from).toHaveBeenCalledWith("audit_events");
       expect(insertedPayload[0]).toMatchObject({
         workspace_id: "workspace-a",
         actor_id: "user-1",
@@ -627,14 +627,14 @@ describe("Multi-Tenant Workspace Isolation", () => {
         insert: vi.fn().mockResolvedValue({ data: null, error: null }),
       };
 
-      const supabase = {
+      const insforge = {
         from: vi.fn().mockReturnValue(builder),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
       const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       await logCrossWorkspaceViolation(
-        supabase,
+        insforge,
         "user-1",
         "workspace-a",
         "workspace-b"
@@ -661,14 +661,14 @@ describe("Multi-Tenant Workspace Isolation", () => {
         }),
       };
 
-      const supabase = {
+      const insforge = {
         from: vi.fn().mockReturnValue(builder),
-      } as unknown as SupabaseClient;
+      } as unknown as InsForgeDatabaseClient;
 
       const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       await logCrossWorkspaceViolation(
-        supabase,
+        insforge,
         "user-1",
         "workspace-a",
         "workspace-b"

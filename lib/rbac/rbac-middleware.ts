@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SupabaseClient } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/server";
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
+import { createClient } from "@/lib/insforge/server";
 
 export type Role = "owner" | "admin" | "analyst" | "viewer";
 
@@ -38,11 +38,11 @@ export function hasPermission(userRole: Role, requiredRole: Role): boolean {
  * Returns null if the user is not a member of the workspace.
  */
 export async function resolveWorkspaceRole(
-  supabase: SupabaseClient,
+  insforge: InsForgeDatabaseClient,
   userId: string,
   workspaceId: string
 ): Promise<Role | null> {
-  const { data, error } = await supabase
+  const { data, error } = await insforge
     .from("workspace_members")
     .select("role")
     .eq("workspace_id", workspaceId)
@@ -91,12 +91,12 @@ export function withRBAC(
   handler: (req: NextRequest, context: RBACContext) => Promise<NextResponse>
 ): (req: NextRequest) => Promise<NextResponse> {
   return async (req: NextRequest): Promise<NextResponse> => {
-    // 1. Get the authenticated user from Supabase session
-    const supabase = createClient();
+    // 1. Get the authenticated user from InsForge session
+    const insforge = createClient();
     const {
       data: { user },
       error: authError,
-    } = await supabase.auth.getUser();
+    } = await insforge.auth.getUser();
 
     if (authError || !user) {
       return NextResponse.json(
@@ -118,7 +118,7 @@ export function withRBAC(
     }
 
     // 3. Resolve the user's role in that workspace
-    const role = await resolveWorkspaceRole(supabase, user.id, workspaceId);
+    const role = await resolveWorkspaceRole(insforge, user.id, workspaceId);
     if (!role) {
       return NextResponse.json(
         {

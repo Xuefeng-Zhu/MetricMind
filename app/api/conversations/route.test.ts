@@ -1,17 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 
-// Mock the Supabase server client
-vi.mock("@/lib/supabase/server", () => ({
+// Mock the InsForge server client
+vi.mock("@/lib/insforge/server", () => ({
   createClient: vi.fn(),
 }));
 
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/insforge/server";
 import { GET, POST } from "./route";
 
 const mockCreateClient = createClient as ReturnType<typeof vi.fn>;
 
-function createMockSupabase(
+function createMockInsForge(
   user: { id: string } | null = null,
   memberData: { role: string } | null = null,
   options?: {
@@ -106,7 +106,7 @@ describe("GET /api/conversations", () => {
   });
 
   it("returns 401 when user is not authenticated", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase(null));
+    mockCreateClient.mockReturnValue(createMockInsForge(null));
 
     const request = createRequest("GET", "ws-1");
     const response = await GET(request);
@@ -117,7 +117,7 @@ describe("GET /api/conversations", () => {
   });
 
   it("returns 400 when workspace ID is missing", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
 
     const request = createRequest("GET");
     const response = await GET(request);
@@ -129,7 +129,7 @@ describe("GET /api/conversations", () => {
   });
 
   it("returns 403 when user is not a workspace member", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }, null));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }, null));
 
     const request = createRequest("GET", "ws-1");
     const response = await GET(request);
@@ -161,7 +161,7 @@ describe("GET /api/conversations", () => {
     ];
 
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "viewer" }, { conversations })
+      createMockInsForge({ id: "user-1" }, { role: "viewer" }, { conversations })
     );
 
     const request = createRequest("GET", "ws-1");
@@ -174,7 +174,7 @@ describe("GET /api/conversations", () => {
 
   it("allows viewer role to list conversations", async () => {
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "viewer" }, { conversations: [] })
+      createMockInsForge({ id: "user-1" }, { role: "viewer" }, { conversations: [] })
     );
 
     const request = createRequest("GET", "ws-1");
@@ -185,7 +185,7 @@ describe("GET /api/conversations", () => {
 
   it("returns 500 when service throws an error", async () => {
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "viewer" }, {
+      createMockInsForge({ id: "user-1" }, { role: "viewer" }, {
         conversationsError: { message: "Database connection failed" },
       })
     );
@@ -205,7 +205,7 @@ describe("POST /api/conversations", () => {
   });
 
   it("returns 401 when user is not authenticated", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase(null));
+    mockCreateClient.mockReturnValue(createMockInsForge(null));
 
     const request = createRequest("POST", "ws-1", { title: "New Chat" });
     const response = await POST(request);
@@ -216,7 +216,7 @@ describe("POST /api/conversations", () => {
   });
 
   it("returns 400 when workspace ID is missing", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
 
     const request = createRequest("POST", undefined, { title: "New Chat" });
     const response = await POST(request);
@@ -227,7 +227,7 @@ describe("POST /api/conversations", () => {
   });
 
   it("returns 403 when user is not a workspace member", async () => {
-    mockCreateClient.mockReturnValue(createMockSupabase({ id: "user-1" }, null));
+    mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }, null));
 
     const request = createRequest("POST", "ws-1", { title: "New Chat" });
     const response = await POST(request);
@@ -248,7 +248,7 @@ describe("POST /api/conversations", () => {
     };
 
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "viewer" }, {
+      createMockInsForge({ id: "user-1" }, { role: "viewer" }, {
         insertData: newConversation,
       })
     );
@@ -272,7 +272,7 @@ describe("POST /api/conversations", () => {
     };
 
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "viewer" }, {
+      createMockInsForge({ id: "user-1" }, { role: "viewer" }, {
         insertData: newConversation,
       })
     );
@@ -296,7 +296,7 @@ describe("POST /api/conversations", () => {
     };
 
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "viewer" }, {
+      createMockInsForge({ id: "user-1" }, { role: "viewer" }, {
         insertData: newConversation,
       })
     );
@@ -309,7 +309,7 @@ describe("POST /api/conversations", () => {
 
   it("returns 500 when service throws an error", async () => {
     mockCreateClient.mockReturnValue(
-      createMockSupabase({ id: "user-1" }, { role: "viewer" }, {
+      createMockInsForge({ id: "user-1" }, { role: "viewer" }, {
         insertError: { message: "Database error" },
       })
     );
