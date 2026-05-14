@@ -11,7 +11,9 @@ import {
   ChevronRight,
   Plus,
 } from 'lucide-react';
-import { revenueTimeSeries } from '@/lib/mock-data/revenue';
+import { useApiMutation } from '@/hooks/use-api-mutation';
+import { AskResponse } from '@/types/api-responses';
+import { LoadingSkeleton, ErrorState } from '@/components/ui/api-states';
 import { SimpleBarChart } from '@/components/charts/simple-bar-chart';
 import { DataTable } from '@/components/data-table/data-table';
 import { Button } from '@/components/ui/button';
@@ -19,55 +21,67 @@ import { Badge } from '@/components/ui/badge';
 
 type VizType = 'line' | 'bar' | 'area' | 'table';
 
-interface TableRow {
-  month: string;
-  starter: string;
-  growth: string;
-  enterprise: string;
-  total: string;
+interface ExploreQuery {
+  question: string;
+  metric?: string;
+  dimensions?: string[];
+  filters?: Record<string, string>;
 }
 
-const MOCK_SQL = `SELECT
-  DATE_TRUNC('month', s.created_at) AS month,
-  p.name AS plan,
-  SUM(s.amount) AS mrr
-FROM subscriptions s
-JOIN plans p ON s.plan_id = p.id
-WHERE s.status = 'active'
-  AND s.created_at >= NOW() - INTERVAL '12 months'
-GROUP BY month, plan
-ORDER BY month ASC;`;
+interface TableRow {
+  [key: string]: string;
+}
 
 export default function ExplorePage() {
   const [vizType, setVizType] = useState<VizType>('bar');
-  const [isLoading, setIsLoading] = useState(false);
-  const [showResults, setShowResults] = useState(true);
   const [sqlExpanded, setSqlExpanded] = useState(false);
+  const [selectedMetric] = useState('MRR');
+  const [selectedDimensions, setSelectedDimensions] = useState<string[]>(['Plan', 'Month']);
+  const [filters] = useState<Record<string, string>>({});
+  const [result, setResult] = useState<AskResponse | null>(null);
 
-  const handleRunQuery = () => {
-    setShowResults(false);
-    setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      setShowResults(true);
-    }, 800);
+  const { mutate, isLoading, error } = useApiMutation<ExploreQuery, AskResponse>('/api/ask', 'POST');
+
+  const handleRunQuery = async () => {
+    setResult(null);
+
+    const query: ExploreQuery = {
+      question: `Show ${selectedMetric} by ${selectedDimensions.join(', ')}`,
+      metric: selectedMetric,
+      dimensions: selectedDimensions,
+      filters: Object.keys(filters).length > 0 ? filters : undefined,
+    };
+
+    const response = await mutate(query);
+    if (response) {
+      setResult(response);
+    }
   };
 
-  const tableData: TableRow[] = revenueTimeSeries.map((d) => ({
-    month: d.month,
-    starter: `$${(d.starter / 1000).toFixed(1)}k`,
-    growth: `$${(d.growth / 1000).toFixed(1)}k`,
-    enterprise: `$${(d.enterprise / 1000).toFixed(1)}k`,
-    total: `$${((d.starter + d.growth + d.enterprise) / 1000).toFixed(1)}k`,
-  }));
+  const handleDimensionToggle = (dimension: string, checked: boolean) => {
+    setSelectedDimensions((prev) =>
+      checked ? [...prev, dimension] : prev.filter((d) => d !== dimension)
+    );
+  };
 
-  const columns: { key: keyof TableRow; label: string }[] = [
-    { key: 'month', label: 'Month' },
-    { key: 'starter', label: 'Starter' },
-    { key: 'growth', label: 'Growth' },
-    { key: 'enterprise', label: 'Enterprise' },
-    { key: 'total', label: 'Total' },
-  ];
+  // Build table columns and data from API results
+  const buildTableData = (): { columns: { key: string; label: string }[]; data: TableRow[] } => {
+    if (!result?.data?.results || result.data.results.length === 0) {
+      return { columns: [], data: [] };
+    }
+
+    const keys = Object.keys(result.data.results[0]);
+    const columns = keys.map((key) => ({ key, label: key.charAt(0).toUpperCase() + key.slice(1) }));
+    const data = result.data.results.map((row) => {
+      const tableRow: TableRow = {};
+      keys.forEach((key) => {
+        tableRow[key] = String(row[key] ?? '');
+      });
+      return tableRow;
+    });
+
+    return { columns, data };
+  };
 
   const vizOptions: { type: VizType; icon: React.ReactNode; label: string }[] = [
     { type: 'line', icon: <LineChart className="h-4 w-4" />, label: 'Line chart' },
@@ -87,7 +101,7 @@ export default function ExplorePage() {
             Metric
           </label>
           <div className="flex items-center justify-between border border-[#E5E7EB] rounded-lg px-3 py-2 bg-white cursor-pointer hover:border-[#2563EB] transition-colors">
-            <span className="text-sm font-medium text-[#111827]">MRR</span>
+            <span className="text-sm font-medium text-[#111827]">{selectedMetric}</span>
             <ChevronDown className="h-4 w-4 text-[#4B5563]" />
           </div>
         </div>
@@ -101,7 +115,8 @@ export default function ExplorePage() {
             <label className="flex items-center gap-2 text-sm text-[#111827] cursor-pointer">
               <input
                 type="checkbox"
-                defaultChecked
+                checked={selectedDimensions.includes('Plan')}
+                onChange={(e) => handleDimensionToggle('Plan', e.target.checked)}
                 className="rounded border-[#E5E7EB] text-[#2563EB] focus:ring-[#2563EB]"
               />
               Plan
@@ -109,7 +124,8 @@ export default function ExplorePage() {
             <label className="flex items-center gap-2 text-sm text-[#111827] cursor-pointer">
               <input
                 type="checkbox"
-                defaultChecked
+                checked={selectedDimensions.includes('Month')}
+                onChange={(e) => handleDimensionToggle('Month', e.target.checked)}
                 className="rounded border-[#E5E7EB] text-[#2563EB] focus:ring-[#2563EB]"
               />
               Month
@@ -175,8 +191,8 @@ export default function ExplorePage() {
 
         {/* Run Query Button */}
         <div className="mt-auto pt-4">
-          <Button onClick={handleRunQuery} className="w-full">
-            Run Query
+          <Button onClick={handleRunQuery} disabled={isLoading} className="w-full">
+            {isLoading ? 'Running...' : 'Run Query'}
           </Button>
         </div>
       </aside>
@@ -184,63 +200,75 @@ export default function ExplorePage() {
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto p-6 bg-[#F6F8FB]" role="region" aria-label="Query results">
         {isLoading ? (
-          <div className="space-y-4 animate-pulse">
-            <div className="h-6 w-40 bg-gray-200 rounded" />
-            <div className="h-[300px] bg-gray-200 rounded-lg" />
-            <div className="h-4 w-60 bg-gray-200 rounded" />
-            <div className="h-[200px] bg-gray-200 rounded-lg" />
-          </div>
-        ) : showResults ? (
+          <LoadingSkeleton lines={6} className="max-w-2xl" />
+        ) : error ? (
+          <ErrorState message={error} onRetry={handleRunQuery} />
+        ) : result ? (
           <div className="space-y-6">
             {/* Chart Title */}
-            <h2 className="text-lg font-semibold text-[#111827]">MRR by Plan</h2>
+            <h2 className="text-lg font-semibold text-[#111827]">
+              {selectedMetric} by {selectedDimensions.join(', ')}
+            </h2>
 
-            {/* Stacked Bar Chart */}
-            <div className="bg-white rounded-xl border border-[#E5E7EB] p-6">
-              <SimpleBarChart
-                data={revenueTimeSeries as unknown as Record<string, unknown>[]}
-                xKey="month"
-                yKeys={['starter', 'growth', 'enterprise']}
-                colors={['#60A5FA', '#16A34A', '#D97706']}
-                height={300}
-                stacked={true}
-                aria-label="MRR by Plan stacked bar chart showing Starter, Growth, and Enterprise revenue over 12 months"
-              />
-            </div>
+            {/* Chart Visualization */}
+            {result.data.chartData && result.data.chartData.length > 0 && (
+              <div className="bg-white rounded-xl border border-[#E5E7EB] p-6">
+                <SimpleBarChart
+                  data={result.data.chartData}
+                  xKey={Object.keys(result.data.chartData[0])[0]}
+                  yKeys={Object.keys(result.data.chartData[0]).slice(1)}
+                  colors={['#60A5FA', '#16A34A', '#D97706']}
+                  height={300}
+                  stacked={vizType === 'bar'}
+                  aria-label={`${selectedMetric} by ${selectedDimensions.join(', ')} chart`}
+                />
+              </div>
+            )}
 
             {/* Result Preview Table */}
-            <div className="bg-white rounded-xl border border-[#E5E7EB] overflow-hidden">
-              <div className="px-6 py-4 border-b border-[#E5E7EB]">
-                <h3 className="text-sm font-semibold text-[#111827]">Result Preview</h3>
-              </div>
-              <DataTable columns={columns} data={tableData} caption="MRR by Plan result data" />
-            </div>
+            {result.data.results && result.data.results.length > 0 && (() => {
+              const { columns, data } = buildTableData();
+              return (
+                <div className="bg-white rounded-xl border border-[#E5E7EB] overflow-hidden">
+                  <div className="px-6 py-4 border-b border-[#E5E7EB]">
+                    <h3 className="text-sm font-semibold text-[#111827]">Result Preview</h3>
+                  </div>
+                  <DataTable
+                    columns={columns}
+                    data={data}
+                    caption={`${selectedMetric} result data`}
+                  />
+                </div>
+              );
+            })()}
 
             {/* Generated SQL Collapsible */}
-            <div className="bg-white rounded-xl border border-[#E5E7EB] overflow-hidden">
-              <button
-                onClick={() => setSqlExpanded(!sqlExpanded)}
-                className="w-full flex items-center gap-2 px-6 py-4 text-left hover:bg-gray-50 transition-colors"
-                aria-expanded={sqlExpanded}
-              >
-                {sqlExpanded ? (
-                  <ChevronDown className="h-4 w-4 text-[#4B5563]" />
-                ) : (
-                  <ChevronRight className="h-4 w-4 text-[#4B5563]" />
+            {result.data.sql && (
+              <div className="bg-white rounded-xl border border-[#E5E7EB] overflow-hidden">
+                <button
+                  onClick={() => setSqlExpanded(!sqlExpanded)}
+                  className="w-full flex items-center gap-2 px-6 py-4 text-left hover:bg-gray-50 transition-colors"
+                  aria-expanded={sqlExpanded}
+                >
+                  {sqlExpanded ? (
+                    <ChevronDown className="h-4 w-4 text-[#4B5563]" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-[#4B5563]" />
+                  )}
+                  <span className="text-sm font-semibold text-[#111827]">Generated SQL</span>
+                  <Badge variant="outline" className="ml-2 text-xs">
+                    PostgreSQL
+                  </Badge>
+                </button>
+                {sqlExpanded && (
+                  <div className="px-6 pb-4">
+                    <pre className="bg-[#1E293B] text-gray-100 rounded-lg p-4 text-sm font-mono overflow-x-auto">
+                      <code>{result.data.sql}</code>
+                    </pre>
+                  </div>
                 )}
-                <span className="text-sm font-semibold text-[#111827]">Generated SQL</span>
-                <Badge variant="outline" className="ml-2 text-xs">
-                  PostgreSQL
-                </Badge>
-              </button>
-              {sqlExpanded && (
-                <div className="px-6 pb-4">
-                  <pre className="bg-[#1E293B] text-gray-100 rounded-lg p-4 text-sm font-mono overflow-x-auto">
-                    <code>{MOCK_SQL}</code>
-                  </pre>
-                </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         ) : null}
       </div>

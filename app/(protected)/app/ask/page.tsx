@@ -1,11 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { conversations, mockAnswer } from "@/lib/mock-data/conversations";
+import { useApiQuery } from "@/hooks/use-api-query";
+import { useApiMutation } from "@/hooks/use-api-mutation";
+import type { ConversationsResponse, MessagesResponse, AskResponse } from "@/types/api-responses";
+import { LoadingSkeleton, ErrorState } from "@/components/ui/api-states";
 import { SimpleBarChart } from "@/components/charts/simple-bar-chart";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Send, Plus, ChevronDown, ChevronRight, MessageSquare } from "lucide-react";
+
+interface AskInput {
+  question: string;
+  conversationId?: string;
+}
 
 function formatRelativeTime(dateString: string): string {
   const date = new Date(dateString);
@@ -24,80 +32,143 @@ function formatRelativeTime(dateString: string): string {
 }
 
 export default function AskPage() {
-  const [activeConversation, setActiveConversation] = useState(conversations[0].id);
+  const [activeConversation, setActiveConversation] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [showAnswer, setShowAnswer] = useState(true);
   const [sqlExpanded, setSqlExpanded] = useState(false);
+  const [lastAnswer, setLastAnswer] = useState<AskResponse | null>(null);
 
-  function handleSubmit(e: React.FormEvent) {
+  // Fetch conversation list
+  const {
+    data: conversationsData,
+    isLoading: conversationsLoading,
+    error: conversationsError,
+    refetch: refetchConversations,
+  } = useApiQuery<ConversationsResponse>("/api/conversations");
+
+  // Fetch messages for selected conversation
+  const {
+    data: messagesData,
+    isLoading: messagesLoading,
+  } = useApiQuery<MessagesResponse>(
+    `/api/conversations/${activeConversation}/messages`,
+    { enabled: !!activeConversation }
+  );
+
+  // Submit question mutation
+  const {
+    mutate: submitQuestion,
+    isLoading: askLoading,
+    error: askError,
+  } = useApiMutation<AskInput, AskResponse>("/api/ask", "POST");
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!question.trim()) return;
 
-    setIsLoading(true);
-    setShowAnswer(false);
+    setLastAnswer(null);
 
-    setTimeout(() => {
-      setIsLoading(false);
-      setShowAnswer(true);
+    const result = await submitQuestion({
+      question: question.trim(),
+      conversationId: activeConversation ?? undefined,
+    });
+
+    if (result) {
+      setLastAnswer(result);
       setQuestion("");
-    }, 800);
+      // Refresh conversations to show new/updated conversation
+      refetchConversations();
+    }
   }
 
   function handleNextQuestion(q: string) {
     setQuestion(q);
   }
 
+  const conversations = conversationsData?.conversations ?? [];
+  const answer = lastAnswer?.data ?? null;
+
   return (
     <div className="flex h-[calc(100vh-theme(spacing.16)-theme(spacing.12))]">
       {/* Left Sidebar - Conversation List */}
       <aside className="w-72 bg-white border-r border-[#E5E7EB] flex flex-col shrink-0" aria-label="Conversation history">
         <div className="p-4 border-b border-[#E5E7EB]">
-          <Button className="w-full" size="sm" aria-label="Start new conversation">
+          <Button
+            className="w-full"
+            size="sm"
+            aria-label="Start new conversation"
+            onClick={() => setActiveConversation(null)}
+          >
             <Plus className="h-4 w-4 mr-2" />
             New Conversation
           </Button>
         </div>
         <nav className="flex-1 overflow-y-auto p-2" aria-label="Past conversations">
-          <ul className="space-y-1">
-            {conversations.map((conv) => (
-              <li key={conv.id}>
-                <button
-                  type="button"
-                  onClick={() => setActiveConversation(conv.id)}
-                  className={`w-full text-left p-3 rounded-lg transition-colors ${
-                    activeConversation === conv.id
-                      ? "bg-[#F0F7FF] border border-blue-200"
-                      : "hover:bg-gray-50"
-                  }`}
-                  aria-current={activeConversation === conv.id ? "true" : undefined}
-                >
-                  <div className="flex items-start gap-2">
-                    <MessageSquare className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-[#111827] truncate">
-                        {conv.title}
-                      </p>
-                      <p className="text-xs text-[#4B5563] truncate mt-0.5">
-                        {conv.lastMessage}
-                      </p>
-                      <p className="text-xs text-[#4B5563] mt-1">
-                        {formatRelativeTime(conv.timestamp)}
-                      </p>
+          {conversationsLoading && (
+            <LoadingSkeleton lines={5} className="p-2" />
+          )}
+          {conversationsError && (
+            <ErrorState message={conversationsError} onRetry={refetchConversations} />
+          )}
+          {!conversationsLoading && !conversationsError && (
+            <ul className="space-y-1">
+              {conversations.map((conv) => (
+                <li key={conv.id}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveConversation(conv.id)}
+                    className={`w-full text-left p-3 rounded-lg transition-colors ${
+                      activeConversation === conv.id
+                        ? "bg-[#F0F7FF] border border-blue-200"
+                        : "hover:bg-gray-50"
+                    }`}
+                    aria-current={activeConversation === conv.id ? "true" : undefined}
+                  >
+                    <div className="flex items-start gap-2">
+                      <MessageSquare className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-[#111827] truncate">
+                          {conv.title ?? "Untitled conversation"}
+                        </p>
+                        <p className="text-xs text-[#4B5563] mt-1">
+                          {formatRelativeTime(conv.updated_at)}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                </button>
-              </li>
-            ))}
-          </ul>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </nav>
       </aside>
 
       {/* Center Content */}
       <div className="flex-1 flex flex-col min-w-0" role="region" aria-label="AI answer area">
         <div className="flex-1 overflow-y-auto p-6">
-          {/* Loading Skeleton */}
-          {isLoading && (
+          {/* Messages for selected conversation */}
+          {activeConversation && messagesLoading && (
+            <LoadingSkeleton lines={6} className="mb-6" />
+          )}
+
+          {activeConversation && messagesData && !messagesLoading && (
+            <div className="space-y-4 mb-6">
+              {messagesData.messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`p-3 rounded-lg text-sm ${
+                    msg.role === "user"
+                      ? "bg-[#F0F7FF] text-[#111827] ml-12"
+                      : "bg-gray-50 text-[#4B5563] mr-12"
+                  }`}
+                >
+                  {msg.content}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Loading Skeleton for answer */}
+          {askLoading && (
             <div className="space-y-4 animate-pulse">
               <div className="h-6 bg-gray-200 rounded w-3/4" />
               <div className="h-4 bg-gray-200 rounded w-1/4" />
@@ -110,66 +181,77 @@ export default function AskPage() {
             </div>
           )}
 
+          {/* Error State */}
+          {askError && !askLoading && (
+            <ErrorState message={askError} />
+          )}
+
           {/* Answer Display */}
-          {showAnswer && !isLoading && (
+          {answer && !askLoading && (
             <div className="space-y-6">
-              {/* Question + Confidence */}
-              <div className="flex items-start justify-between gap-4">
-                <h1 className="text-xl font-semibold text-[#111827]">
-                  {mockAnswer.question}
-                </h1>
-                <Badge variant="success" className="shrink-0 whitespace-nowrap">
-                  {mockAnswer.confidence}% confidence
-                </Badge>
-              </div>
+              {/* Confidence */}
+              {answer.confidence && (
+                <div className="flex items-start justify-between gap-4">
+                  <h1 className="text-xl font-semibold text-[#111827]">
+                    Answer
+                  </h1>
+                  <Badge variant="success" className="shrink-0 whitespace-nowrap">
+                    {answer.confidence}% confidence
+                  </Badge>
+                </div>
+              )}
 
               {/* AI Summary */}
               <p className="text-sm text-[#4B5563] leading-relaxed">
-                {mockAnswer.summary}
+                {answer.summary}
               </p>
 
               {/* Metric Cards */}
-              <div className="grid grid-cols-3 gap-4">
-                {mockAnswer.metrics.map((metric) => (
-                  <div
-                    key={metric.label}
-                    className="bg-white border border-[#E5E7EB] rounded-xl p-4"
-                  >
-                    <p className="text-xs text-[#4B5563] font-medium uppercase tracking-wide">
-                      {metric.label}
-                    </p>
-                    <div className="flex items-baseline gap-2 mt-1">
-                      <span className="text-2xl font-bold text-[#111827]">
-                        {metric.value}
-                      </span>
-                      <span
-                        className={`text-xs font-medium ${
-                          metric.trend === "up" ? "text-red-600" : "text-green-600"
-                        }`}
-                      >
-                        {metric.trend === "up" ? "↑" : "↓"}
-                      </span>
+              {answer.metrics && answer.metrics.length > 0 && (
+                <div className="grid grid-cols-3 gap-4">
+                  {answer.metrics.map((metric) => (
+                    <div
+                      key={metric.label}
+                      className="bg-white border border-[#E5E7EB] rounded-xl p-4"
+                    >
+                      <p className="text-xs text-[#4B5563] font-medium uppercase tracking-wide">
+                        {metric.label}
+                      </p>
+                      <div className="flex items-baseline gap-2 mt-1">
+                        <span className="text-2xl font-bold text-[#111827]">
+                          {metric.value}
+                        </span>
+                        <span
+                          className={`text-xs font-medium ${
+                            metric.trend === "up" ? "text-red-600" : "text-green-600"
+                          }`}
+                        >
+                          {metric.trend === "up" ? "↑" : "↓"}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Churn by Activation Cohort Chart */}
-              <section>
-                <h2 className="text-sm font-semibold text-[#111827] mb-3">
-                  Churn by Activation Cohort
-                </h2>
-                <div className="bg-white border border-[#E5E7EB] rounded-xl p-4">
-                  <SimpleBarChart
-                    data={mockAnswer.chartData}
-                    xKey="cohort"
-                    yKeys={["churnRate"]}
-                    colors={["#2563EB"]}
-                    height={250}
-                    aria-label="Bar chart showing churn rate by activation cohort from January to June 2024"
-                  />
+                  ))}
                 </div>
-              </section>
+              )}
+
+              {/* Chart */}
+              {answer.chartData && answer.chartData.length > 0 && (
+                <section>
+                  <h2 className="text-sm font-semibold text-[#111827] mb-3">
+                    Results Chart
+                  </h2>
+                  <div className="bg-white border border-[#E5E7EB] rounded-xl p-4">
+                    <SimpleBarChart
+                      data={answer.chartData}
+                      xKey={Object.keys(answer.chartData[0])[0]}
+                      yKeys={Object.keys(answer.chartData[0]).slice(1)}
+                      colors={["#2563EB"]}
+                      height={250}
+                      aria-label="Bar chart showing query results"
+                    />
+                  </div>
+                </section>
+              )}
 
               {/* Generated SQL (Collapsible) */}
               <section>
@@ -193,7 +275,7 @@ export default function AskPage() {
                     className="mt-3 bg-[#1E293B] rounded-xl p-4 overflow-x-auto"
                   >
                     <pre className="text-sm font-mono text-gray-200 whitespace-pre-wrap">
-                      {mockAnswer.sql}
+                      {answer.sql}
                     </pre>
                   </div>
                 )}
@@ -215,12 +297,12 @@ export default function AskPage() {
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="Ask a question about your data..."
               className="flex-1 h-10 px-4 rounded-lg border border-[#E5E7EB] bg-[#F6F8FB] text-sm text-[#111827] placeholder:text-[#4B5563] focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
-              disabled={isLoading}
+              disabled={askLoading}
             />
             <Button
               type="submit"
               size="icon"
-              disabled={isLoading || !question.trim()}
+              disabled={askLoading || !question.trim()}
               aria-label="Send question"
             >
               <Send className="h-4 w-4" />
@@ -232,55 +314,50 @@ export default function AskPage() {
       {/* Right Panel */}
       <aside className="w-80 bg-white border-l border-[#E5E7EB] flex flex-col shrink-0 overflow-y-auto" aria-label="Answer details">
         {/* Citations */}
-        <section className="p-4 border-b border-[#E5E7EB]">
-          <h2 className="text-sm font-semibold text-[#111827] mb-3">Citations</h2>
-          <ul className="space-y-2">
-            {mockAnswer.citations.map((citation, index) => (
-              <li key={index}>
-                <a
-                  href={citation.source}
-                  className="flex items-center gap-2 text-sm text-[#2563EB] hover:underline"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] shrink-0" />
-                  {citation.label}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </section>
-
-        {/* Next Questions */}
-        <section className="p-4 border-b border-[#E5E7EB]">
-          <h2 className="text-sm font-semibold text-[#111827] mb-3">Next Questions</h2>
-          <ul className="space-y-2">
-            {mockAnswer.nextQuestions.map((q, index) => (
-              <li key={index}>
-                <button
-                  type="button"
-                  onClick={() => handleNextQuestion(q)}
-                  className="w-full text-left text-sm text-[#4B5563] hover:text-[#2563EB] hover:bg-[#F0F7FF] p-2 rounded-md transition-colors"
-                >
-                  {q}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
+        {answer?.citations && answer.citations.length > 0 && (
+          <section className="p-4 border-b border-[#E5E7EB]">
+            <h2 className="text-sm font-semibold text-[#111827] mb-3">Citations</h2>
+            <ul className="space-y-2">
+              {answer.citations.map((citation, index) => (
+                <li key={index}>
+                  <a
+                    href={citation.source}
+                    className="flex items-center gap-2 text-sm text-[#2563EB] hover:underline"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#2563EB] shrink-0" />
+                    {citation.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* Trace Steps */}
-        <section className="p-4">
-          <h2 className="text-sm font-semibold text-[#111827] mb-3">Trace Steps</h2>
-          <ol className="space-y-2">
-            {mockAnswer.traceSteps.map((step, index) => (
-              <li key={index} className="flex items-center gap-3 text-sm text-[#4B5563]">
-                <span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#F0F7FF] text-[#2563EB] text-xs font-semibold shrink-0">
-                  {index + 1}
-                </span>
-                {step}
-              </li>
-            ))}
-          </ol>
-        </section>
+        {answer?.aiTrace && answer.aiTrace.steps.length > 0 && (
+          <section className="p-4">
+            <h2 className="text-sm font-semibold text-[#111827] mb-3">Trace Steps</h2>
+            <ol className="space-y-2">
+              {answer.aiTrace.steps.map((step, index) => (
+                <li key={index} className="flex items-center gap-3 text-sm text-[#4B5563]">
+                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#F0F7FF] text-[#2563EB] text-xs font-semibold shrink-0">
+                    {index + 1}
+                  </span>
+                  {step}
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+
+        {/* Empty state for right panel when no answer */}
+        {!answer && !askLoading && (
+          <div className="flex-1 flex items-center justify-center p-4">
+            <p className="text-sm text-[#4B5563] text-center">
+              Ask a question to see citations and trace details here.
+            </p>
+          </div>
+        )}
       </aside>
     </div>
   );
