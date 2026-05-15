@@ -339,8 +339,8 @@ describe('LineageService', () => {
       const insforge = createMockInsForge({
         from: {
           semantic_entities: entitiesBuilder,
-          dimensions: dimensionsBuilder,
-          measures: measuresBuilder,
+          semantic_dimensions: dimensionsBuilder,
+          semantic_measures: measuresBuilder,
         },
       });
 

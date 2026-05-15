@@ -450,8 +450,8 @@ export function createLineageService(insforge: InsForgeDatabaseClient): LineageS
 
           // Fetch dimensions and measures for this entity
           const [dimResult, measureResult] = await Promise.all([
-            insforge.from('dimensions').select('name').eq('entity_id', actualId),
-            insforge.from('measures').select('name').eq('entity_id', actualId),
+            insforge.from('semantic_dimensions').select('name').eq('entity_id', actualId),
+            insforge.from('semantic_measures').select('name').eq('entity_id', actualId),
           ]);
 
           const dimensions = (dimResult.data ?? []).map((d: { name: string }) => d.name);

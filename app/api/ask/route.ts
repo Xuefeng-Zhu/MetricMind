@@ -121,6 +121,7 @@ async function handler(req: NextRequest, context: RBACContext): Promise<NextResp
       question: question.trim(),
       workspaceId,
       userId,
+      userRole: context.role,
       conversationId: conversationId || undefined,
     });
 
@@ -142,6 +143,21 @@ async function handler(req: NextRequest, context: RBACContext): Promise<NextResp
       success: true,
       data: {
         ...result,
+        citations: result.citations.map((citation) => ({
+          label: `${citation.type}: ${citation.name}`,
+          source: citation.type === 'metric'
+            ? `/app/semantic-layer/metrics/${citation.id}`
+            : '/app/semantic-layer',
+        })),
+        aiTrace: {
+          id: result.aiTrace.id,
+          steps: [
+            'Generated SemanticQuery JSON',
+            'Validated semantic registry references',
+            'Compiled governed SQL',
+            'Executed read-only query',
+          ],
+        },
         summary: buildSummary(question.trim(), result),
         chartData: buildChartData(result.results),
         confidence: result.confidence,

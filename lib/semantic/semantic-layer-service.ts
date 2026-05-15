@@ -1,5 +1,7 @@
 import { InsForgeDatabaseClient } from "@/lib/insforge/types";
 import { ColumnMetadata, suggestSemanticType } from "../data-sources/data-source-service";
+import type { SemanticFilter, SemanticMetricCalculation, SemanticTimeGrain, WorkspaceRole } from "./types";
+import { slugifySemanticName } from "./metric-resolver";
 
 // --- Input Types ---
 
@@ -14,13 +16,18 @@ export interface CreateDimensionInput {
   description?: string;
   dataType: "text" | "integer" | "float" | "boolean" | "date" | "timestamp";
   sourceColumn: string;
+  expression?: string;
+  timeGrain?: SemanticTimeGrain;
+  isPii?: boolean;
+  requiredRole?: WorkspaceRole;
 }
 
 export interface CreateMeasureInput {
   name: string;
   description?: string;
   dataType: "text" | "integer" | "float" | "boolean" | "date" | "timestamp";
-  sourceColumn: string;
+  sourceColumn?: string;
+  expression?: string;
   defaultAggregation: "sum" | "count" | "average" | "min" | "max";
 }
 
@@ -37,6 +44,11 @@ export interface CreateMetricInput {
   description?: string;
   formula: string;
   createdBy: string;
+  rootEntityId?: string;
+  measureId?: string;
+  timeDimensionId?: string;
+  calculation?: SemanticMetricCalculation;
+  filters?: SemanticFilter[];
 }
 
 export interface CreateGlossaryInput {
@@ -52,8 +64,12 @@ export interface SemanticEntity {
   id: string;
   workspace_id: string;
   data_source_id: string;
+  model_id: string | null;
   name: string;
+  slug: string;
   description: string | null;
+  source_table: string;
+  primary_key: string;
   created_at: string;
 }
 
@@ -61,18 +77,25 @@ export interface Dimension {
   id: string;
   entity_id: string;
   name: string;
+  slug: string;
   description: string | null;
   data_type: string;
   source_column: string;
+  expression: string | null;
+  time_grain: string | null;
+  is_pii: boolean;
+  required_role: string;
 }
 
 export interface Measure {
   id: string;
   entity_id: string;
   name: string;
+  slug: string;
   description: string | null;
   data_type: string;
-  source_column: string;
+  source_column: string | null;
+  expression: string | null;
   default_aggregation: string;
 }
 
@@ -95,6 +118,7 @@ export interface Metric {
   id: string;
   workspace_id: string;
   name: string;
+  slug: string;
   description: string | null;
   formula: string;
   certified: boolean;
@@ -102,6 +126,11 @@ export interface Metric {
   certified_at: string | null;
   created_at: string;
   created_by: string;
+  root_entity_id: string | null;
+  measure_id: string | null;
+  time_dimension_id: string | null;
+  calculation: SemanticMetricCalculation;
+  filters: SemanticFilter[];
 }
 
 export interface GlossaryTerm {
@@ -164,12 +193,12 @@ async function getEntityColumns(
   entityId: string
 ): Promise<string[]> {
   const { data: dimensions } = await insforge
-    .from("dimensions")
+    .from("semantic_dimensions")
     .select("source_column")
     .eq("entity_id", entityId);
 
   const { data: measures } = await insforge
-    .from("measures")
+    .from("semantic_measures")
     .select("source_column")
     .eq("entity_id", entityId);
 
@@ -178,9 +207,57 @@ async function getEntityColumns(
     columns.push(...dimensions.map((d: { source_column: string }) => d.source_column));
   }
   if (measures) {
-    columns.push(...measures.map((m: { source_column: string }) => m.source_column));
+    columns.push(
+      ...measures
+        .map((m: { source_column: string | null }) => m.source_column)
+        .filter((column): column is string => !!column)
+    );
   }
   return columns;
+}
+
+async function getSourceTableForDataSource(
+  insforge: InsForgeDatabaseClient,
+  dataSourceId: string
+): Promise<string> {
+  const { data, error } = await insforge
+    .from("data_sources")
+    .select("name, type")
+    .eq("id", dataSourceId)
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "Data source not found");
+  }
+
+  const source = data as { name: string; type?: string };
+  return source.type === "demo" ? `demo.${source.name}` : source.name;
+}
+
+async function createSemanticModel(
+  insforge: InsForgeDatabaseClient,
+  workspaceId: string,
+  name: string,
+  description: string | undefined,
+  sourceTable: string
+): Promise<string> {
+  const { data, error } = await insforge
+    .from("semantic_models")
+    .insert({
+      workspace_id: workspaceId,
+      name,
+      slug: slugifySemanticName(name),
+      description: description ?? null,
+      source_table: sourceTable,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message ?? "Failed to create semantic model");
+  }
+
+  return (data as { id: string }).id;
 }
 
 // --- Helper: generate reason for semantic type suggestion ---
@@ -229,15 +306,28 @@ export function createSemanticLayerService(
     // --- Entity CRUD ---
 
     async createEntity(workspaceId: string, input: CreateEntityInput): Promise<SemanticEntity> {
+      const sourceTable = await getSourceTableForDataSource(insforge, input.dataSourceId);
+      const modelId = await createSemanticModel(
+        insforge,
+        workspaceId,
+        input.name,
+        input.description,
+        sourceTable
+      );
+
       const { data, error } = await insforge
         .from("semantic_entities")
         .insert({
           workspace_id: workspaceId,
           data_source_id: input.dataSourceId,
+          model_id: modelId,
           name: input.name,
+          slug: slugifySemanticName(input.name),
           description: input.description ?? null,
+          source_table: sourceTable,
+          primary_key: "id",
         })
-        .select("id, workspace_id, data_source_id, name, description, created_at")
+        .select("id, workspace_id, data_source_id, model_id, name, slug, description, source_table, primary_key, created_at")
         .single();
 
       if (error || !data) {
@@ -250,7 +340,7 @@ export function createSemanticLayerService(
     async getEntities(workspaceId: string): Promise<SemanticEntity[]> {
       const { data, error } = await insforge
         .from("semantic_entities")
-        .select("id, workspace_id, data_source_id, name, description, created_at")
+        .select("id, workspace_id, data_source_id, model_id, name, slug, description, source_table, primary_key, created_at")
         .eq("workspace_id", workspaceId)
         .order("created_at", { ascending: false });
 
@@ -264,7 +354,7 @@ export function createSemanticLayerService(
     async getEntity(id: string): Promise<SemanticEntity> {
       const { data, error } = await insforge
         .from("semantic_entities")
-        .select("id, workspace_id, data_source_id, name, description, created_at")
+        .select("id, workspace_id, data_source_id, model_id, name, slug, description, source_table, primary_key, created_at")
         .eq("id", id)
         .single();
 
@@ -279,15 +369,20 @@ export function createSemanticLayerService(
 
     async addDimension(entityId: string, input: CreateDimensionInput): Promise<Dimension> {
       const { data, error } = await insforge
-        .from("dimensions")
+        .from("semantic_dimensions")
         .insert({
           entity_id: entityId,
           name: input.name,
+          slug: slugifySemanticName(input.name),
           description: input.description ?? null,
           data_type: input.dataType,
           source_column: input.sourceColumn,
+          expression: input.expression ?? null,
+          time_grain: input.timeGrain ?? null,
+          is_pii: input.isPii ?? false,
+          required_role: input.requiredRole ?? "viewer",
         })
-        .select("id, entity_id, name, description, data_type, source_column")
+        .select("id, entity_id, name, slug, description, data_type, source_column, expression, time_grain, is_pii, required_role")
         .single();
 
       if (error || !data) {
@@ -299,16 +394,18 @@ export function createSemanticLayerService(
 
     async addMeasure(entityId: string, input: CreateMeasureInput): Promise<Measure> {
       const { data, error } = await insforge
-        .from("measures")
+        .from("semantic_measures")
         .insert({
           entity_id: entityId,
           name: input.name,
+          slug: slugifySemanticName(input.name),
           description: input.description ?? null,
           data_type: input.dataType,
-          source_column: input.sourceColumn,
+          source_column: input.sourceColumn ?? null,
+          expression: input.expression ?? null,
           default_aggregation: input.defaultAggregation,
         })
-        .select("id, entity_id, name, description, data_type, source_column, default_aggregation")
+        .select("id, entity_id, name, slug, description, data_type, source_column, expression, default_aggregation")
         .single();
 
       if (error || !data) {
@@ -328,7 +425,7 @@ export function createSemanticLayerService(
       }
 
       const { data, error } = await insforge
-        .from("join_relationships")
+        .from("semantic_relationships")
         .insert({
           workspace_id: workspaceId,
           source_entity_id: input.sourceEntityId,
@@ -375,19 +472,26 @@ export function createSemanticLayerService(
     // --- Metrics ---
 
     async createMetric(workspaceId: string, input: CreateMetricInput): Promise<Metric> {
+      const calculation = resolveCreateMetricCalculation(input);
       const { data, error } = await insforge
         .from("metrics")
         .insert({
           workspace_id: workspaceId,
           name: input.name,
+          slug: slugifySemanticName(input.name),
           description: input.description ?? null,
           formula: input.formula,
           certified: false,
           certified_by: null,
           certified_at: null,
           created_by: input.createdBy,
+          root_entity_id: input.rootEntityId ?? null,
+          measure_id: input.measureId ?? null,
+          time_dimension_id: input.timeDimensionId ?? null,
+          calculation,
+          filters: input.filters ?? [],
         })
-        .select("id, workspace_id, name, description, formula, certified, certified_by, certified_at, created_at, created_by")
+        .select("id, workspace_id, name, slug, description, formula, certified, certified_by, certified_at, created_at, created_by, root_entity_id, measure_id, time_dimension_id, calculation, filters")
         .single();
 
       if (error || !data) {
@@ -406,7 +510,7 @@ export function createSemanticLayerService(
           certified_at: new Date().toISOString(),
         })
         .eq("id", metricId)
-        .select("id, workspace_id, name, description, formula, certified, certified_by, certified_at, created_at, created_by")
+        .select("id, workspace_id, name, slug, description, formula, certified, certified_by, certified_at, created_at, created_by, root_entity_id, measure_id, time_dimension_id, calculation, filters")
         .single();
 
       if (error || !data) {
@@ -419,7 +523,7 @@ export function createSemanticLayerService(
     async getMetrics(workspaceId: string): Promise<Metric[]> {
       const { data, error } = await insforge
         .from("metrics")
-        .select("id, workspace_id, name, description, formula, certified, certified_by, certified_at, created_at, created_by")
+        .select("id, workspace_id, name, slug, description, formula, certified, certified_by, certified_at, created_at, created_by, root_entity_id, measure_id, time_dimension_id, calculation, filters")
         .eq("workspace_id", workspaceId)
         .order("created_at", { ascending: false });
 
@@ -533,4 +637,26 @@ export function createSemanticLayerService(
       return suggestions;
     },
   };
+}
+
+function resolveCreateMetricCalculation(input: CreateMetricInput): SemanticMetricCalculation {
+  if (!input.rootEntityId) {
+    throw new Error("Metric root entity is required for semantic compilation");
+  }
+
+  if (input.calculation) {
+    return input.calculation;
+  }
+
+  if (input.measureId) {
+    return { type: "measure", measure: input.measureId };
+  }
+
+  const countMatch = input.formula.trim().match(/^count\s*\(\s*(\*|[a-zA-Z_][a-zA-Z0-9_]*|"[^"]+")\s*\)$/i);
+  if (countMatch) {
+    const counted = countMatch[1].replace(/^"|"$/g, "");
+    return counted === "*" ? { type: "count" } : { type: "count", distinct: counted };
+  }
+
+  throw new Error("Metric calculation metadata is required for semantic compilation");
 }

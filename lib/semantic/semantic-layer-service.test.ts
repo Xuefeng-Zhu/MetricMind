@@ -44,12 +44,19 @@ describe("SemanticLayerService", () => {
         id: "entity-1",
         workspace_id: "ws-1",
         data_source_id: "ds-1",
+        model_id: "model-1",
         name: "Customers",
+        slug: "customers",
         description: "Customer accounts",
+        source_table: "demo.customers",
+        primary_key: "id",
         created_at: "2024-01-01T00:00:00Z",
       };
 
-      mockChain.single.mockResolvedValueOnce({ data: mockEntity, error: null });
+      mockChain.single
+        .mockResolvedValueOnce({ data: { name: "customers", type: "demo" }, error: null })
+        .mockResolvedValueOnce({ data: { id: "model-1" }, error: null })
+        .mockResolvedValueOnce({ data: mockEntity, error: null });
 
       const result = await service.createEntity("ws-1", {
         dataSourceId: "ds-1",
@@ -66,12 +73,19 @@ describe("SemanticLayerService", () => {
         id: "entity-2",
         workspace_id: "ws-1",
         data_source_id: "ds-1",
+        model_id: "model-1",
         name: "Orders",
+        slug: "orders",
         description: null,
+        source_table: "demo.orders",
+        primary_key: "id",
         created_at: "2024-01-01T00:00:00Z",
       };
 
-      mockChain.single.mockResolvedValueOnce({ data: mockEntity, error: null });
+      mockChain.single
+        .mockResolvedValueOnce({ data: { name: "orders", type: "demo" }, error: null })
+        .mockResolvedValueOnce({ data: { id: "model-1" }, error: null })
+        .mockResolvedValueOnce({ data: mockEntity, error: null });
 
       const result = await service.createEntity("ws-1", {
         dataSourceId: "ds-1",
@@ -179,7 +193,7 @@ describe("SemanticLayerService", () => {
       });
 
       expect(result).toEqual(mockDimension);
-      expect(insforge.from).toHaveBeenCalledWith("dimensions");
+      expect(insforge.from).toHaveBeenCalledWith("semantic_dimensions");
     });
 
     it("should throw on database error", async () => {
@@ -221,7 +235,7 @@ describe("SemanticLayerService", () => {
       });
 
       expect(result).toEqual(mockMeasure);
-      expect(insforge.from).toHaveBeenCalledWith("measures");
+      expect(insforge.from).toHaveBeenCalledWith("semantic_measures");
     });
 
     it("should throw on database error", async () => {
@@ -469,6 +483,8 @@ describe("SemanticLayerService", () => {
         name: "MRR",
         description: "Monthly Recurring Revenue",
         formula: "SUM(subscriptions.mrr_cents) / 100",
+        rootEntityId: "entity-1",
+        measureId: "measure-1",
         createdBy: "user-1",
       });
 
@@ -477,6 +493,13 @@ describe("SemanticLayerService", () => {
       expect(result.certified_by).toBeNull();
       expect(result.certified_at).toBeNull();
       expect(insforge.from).toHaveBeenCalledWith("metrics");
+      expect(mockChain.insert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          root_entity_id: "entity-1",
+          measure_id: "measure-1",
+          calculation: { type: "measure", measure: "measure-1" },
+        })
+      );
     });
 
     it("should throw on database error", async () => {
@@ -489,9 +512,23 @@ describe("SemanticLayerService", () => {
         service.createMetric("ws-1", {
           name: "Test",
           formula: "COUNT(*)",
+          rootEntityId: "entity-1",
           createdBy: "user-1",
         })
       ).rejects.toThrow("Insert failed");
+    });
+
+    it("should reject formula-only metrics that cannot be compiled semantically", async () => {
+      await expect(
+        service.createMetric("ws-1", {
+          name: "Unsafe",
+          formula: "SUM(raw_amount)",
+          rootEntityId: "entity-1",
+          createdBy: "user-1",
+        })
+      ).rejects.toThrow("Metric calculation metadata is required");
+
+      expect(insforge.from).not.toHaveBeenCalledWith("metrics");
     });
   });
 

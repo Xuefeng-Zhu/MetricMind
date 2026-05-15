@@ -17,6 +17,7 @@ import type { EntitiesResponse, MetricsResponse, JoinsResponse } from '@/types/a
 import { LoadingSkeleton, ErrorState, EmptyState } from '@/components/ui/api-states';
 import { DataTable } from '@/components/data-table/data-table';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import type { Node, NodeProps, Edge } from 'reactflow';
 
@@ -94,6 +95,15 @@ interface MetricRow {
   certified_date: string | null;
 }
 
+interface GlossaryResponse {
+  terms: Array<{
+    id: string;
+    name: string;
+    definition: string;
+    created_at: string;
+  }>;
+}
+
 const metricsColumns = [
   { key: 'name' as keyof MetricRow, label: 'Name' },
   { key: 'formula' as keyof MetricRow, label: 'Formula' },
@@ -140,6 +150,13 @@ export default function SemanticLayerPage() {
     error: joinsError,
     refetch: refetchJoins,
   } = useApiQuery<JoinsResponse>('/api/semantic/joins');
+
+  const {
+    data: glossaryData,
+    isLoading: glossaryLoading,
+    error: glossaryError,
+    refetch: refetchGlossary,
+  } = useApiQuery<GlossaryResponse>('/api/semantic/glossary');
 
   // Build graph nodes from entities
   const initialNodes: Node[] = useMemo(() => {
@@ -202,8 +219,13 @@ export default function SemanticLayerPage() {
     return getEntityColor(index >= 0 ? index : 0);
   }, [selectedEntity, entitiesData]);
 
+  const entities = entitiesData?.entities ?? [];
+  const metrics = metricsData?.metrics ?? [];
+  const joins = joinsData?.joins ?? [];
+  const glossaryTerms = glossaryData?.terms ?? [];
+
   // Primary empty state: no entities at all
-  if (!entitiesLoading && !entitiesError && entitiesData && entitiesData.entities.length === 0) {
+  if (!entitiesLoading && !entitiesError && entitiesData && entities.length === 0) {
     return (
       <div className="space-y-6">
         <h1 className="text-2xl font-bold text-[#111827]">Semantic Layer</h1>
@@ -225,98 +247,162 @@ export default function SemanticLayerPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-[#111827]">Semantic Layer</h1>
 
-      {/* Main area: entity graph + detail panel */}
-      <div className="grid grid-cols-5 gap-6">
-        {/* Entity Graph — 60% (3/5 columns) */}
-        <div className="col-span-3 bg-white rounded-xl border border-[#E5E7EB] overflow-hidden">
-          {entitiesLoading || joinsLoading ? (
-            <div className="h-[480px] flex items-center justify-center p-6">
-              <LoadingSkeleton lines={6} className="w-full" />
-            </div>
-          ) : entitiesError ? (
-            <div className="h-[480px] flex items-center justify-center">
-              <ErrorState message={entitiesError} onRetry={refetchEntities} />
-            </div>
-          ) : joinsError ? (
-            <div className="h-[480px] flex items-center justify-center">
-              <ErrorState message={joinsError} onRetry={refetchJoins} />
-            </div>
-          ) : (
-            <div className="h-[480px]" aria-label="Entity relationship graph">
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                onNodeClick={onNodeClick}
-                nodeTypes={nodeTypes}
-                fitView
-                proOptions={{ hideAttribution: true }}
-              >
-                <Background color="#E5E7EB" gap={20} />
-                <Controls />
-              </ReactFlow>
-            </div>
-          )}
-        </div>
+      <Tabs defaultValue="metrics" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="metrics">Metrics</TabsTrigger>
+          <TabsTrigger value="entities">Entities</TabsTrigger>
+          <TabsTrigger value="relationships">Relationships</TabsTrigger>
+          <TabsTrigger value="glossary">Glossary</TabsTrigger>
+        </TabsList>
 
-        {/* Detail Panel — 40% (2/5 columns) */}
-        <div className="col-span-2 bg-white rounded-xl border border-[#E5E7EB] p-6 space-y-5">
-          {entitiesLoading ? (
-            <LoadingSkeleton lines={5} />
-          ) : selectedEntity ? (
-            <>
-              <div>
-                <h2 className="text-lg font-semibold text-[#111827] flex items-center gap-2">
-                  <span
-                    className="w-3 h-3 rounded-full inline-block"
-                    style={{ backgroundColor: selectedEntityColor }}
-                  />
-                  {selectedEntity.name}
-                </h2>
-                {selectedEntity.description && (
-                  <p className="text-sm text-[#4B5563] mt-1">
-                    {selectedEntity.description}
-                  </p>
-                )}
+        <TabsContent value="metrics" forceMount>
+          <h2 className="text-lg font-semibold text-[#111827] mb-4">Certified Metrics</h2>
+          <section className="bg-white rounded-xl border border-[#E5E7EB] overflow-hidden">
+            {metricsLoading ? (
+              <div className="p-6">
+                <LoadingSkeleton lines={5} />
               </div>
-            </>
-          ) : (
-            <div className="flex items-center justify-center h-full">
-              <p className="text-sm text-[#4B5563]">
-                Click an entity node to view details
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Certified Metrics Table */}
-      <section>
-        <h2 className="text-lg font-semibold text-[#111827] mb-4">Certified Metrics</h2>
-        <div className="bg-white rounded-xl border border-[#E5E7EB] overflow-hidden">
-          {metricsLoading ? (
-            <div className="p-6">
-              <LoadingSkeleton lines={5} />
-            </div>
-          ) : metricsError ? (
-            <ErrorState message={metricsError} onRetry={refetchMetrics} />
-          ) : metricsData && metricsData.metrics.length > 0 ? (
-            <DataTable
-              columns={metricsColumns}
-              data={metricsData.metrics}
-              caption="Certified metrics with formulas, owners, and certification status"
-            />
-          ) : (
-            <div className="p-6">
-              <EmptyState
-                title="No metrics defined"
-                description="Create certified metrics to ensure consistent definitions across your organization."
+            ) : metricsError ? (
+              <ErrorState message={metricsError} onRetry={refetchMetrics} />
+            ) : metrics.length > 0 ? (
+              <DataTable
+                columns={metricsColumns}
+                data={metrics.map((metric) => ({
+                  id: metric.id,
+                  name: metric.name,
+                  formula: metric.formula,
+                  owner: metric.owner,
+                  certified: metric.certified,
+                  certified_date: metric.certified_date,
+                }))}
+                caption="Certified metrics with formulas, owners, and certification status"
               />
+            ) : (
+              <div className="p-6">
+                <EmptyState
+                  title="No metrics defined"
+                  description="Create certified metrics to ensure consistent definitions across your organization."
+                />
+              </div>
+            )}
+          </section>
+        </TabsContent>
+
+        <TabsContent value="entities" forceMount>
+          <div className="grid grid-cols-5 gap-6">
+            <div className="col-span-3 bg-white rounded-xl border border-[#E5E7EB] overflow-hidden">
+              {entitiesLoading || joinsLoading ? (
+                <div className="h-[480px] flex items-center justify-center p-6">
+                  <LoadingSkeleton lines={6} className="w-full" />
+                </div>
+              ) : entitiesError ? (
+                <div className="h-[480px] flex items-center justify-center">
+                  <ErrorState message={entitiesError} onRetry={refetchEntities} />
+                </div>
+              ) : joinsError ? (
+                <div className="h-[480px] flex items-center justify-center">
+                  <ErrorState message={joinsError} onRetry={refetchJoins} />
+                </div>
+              ) : (
+                <div className="h-[480px]" aria-label="Entity relationship graph">
+                  <ReactFlow
+                    nodes={nodes}
+                    edges={edges}
+                    onNodesChange={onNodesChange}
+                    onEdgesChange={onEdgesChange}
+                    onNodeClick={onNodeClick}
+                    nodeTypes={nodeTypes}
+                    fitView
+                    proOptions={{ hideAttribution: true }}
+                  >
+                    <Background color="#E5E7EB" gap={20} />
+                    <Controls />
+                  </ReactFlow>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </section>
+
+            <div className="col-span-2 bg-white rounded-xl border border-[#E5E7EB] p-6 space-y-5">
+              {entitiesLoading ? (
+                <LoadingSkeleton lines={5} />
+              ) : selectedEntity ? (
+                <div>
+                  <h2 className="text-lg font-semibold text-[#111827] flex items-center gap-2">
+                    <span
+                      className="w-3 h-3 rounded-full inline-block"
+                      style={{ backgroundColor: selectedEntityColor }}
+                    />
+                    {selectedEntity.name}
+                  </h2>
+                  {selectedEntity.description && (
+                    <p className="text-sm text-[#4B5563] mt-1">
+                      {selectedEntity.description}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-sm text-[#4B5563]">
+                    Click an entity node to view details
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="relationships" forceMount>
+          <section className="bg-white rounded-xl border border-[#E5E7EB] overflow-hidden">
+            {joinsLoading ? (
+              <div className="p-6">
+                <LoadingSkeleton lines={5} />
+              </div>
+            ) : joinsError ? (
+              <ErrorState message={joinsError} onRetry={refetchJoins} />
+            ) : joins.length > 0 ? (
+              <DataTable
+                columns={[
+                  { key: 'source_column', label: 'Source Column' },
+                  { key: 'target_column', label: 'Target Column' },
+                  { key: 'join_type', label: 'Join' },
+                  { key: 'condition', label: 'Condition' },
+                ]}
+                data={joins}
+                caption="Semantic relationships used by the query compiler"
+              />
+            ) : (
+              <div className="p-6">
+                <EmptyState title="No relationships defined" description="Create relationships to let metrics use dimensions across entities." />
+              </div>
+            )}
+          </section>
+        </TabsContent>
+
+        <TabsContent value="glossary" forceMount>
+          <section className="bg-white rounded-xl border border-[#E5E7EB] overflow-hidden">
+            {glossaryLoading ? (
+              <div className="p-6">
+                <LoadingSkeleton lines={5} />
+              </div>
+            ) : glossaryError ? (
+              <ErrorState message={glossaryError} onRetry={refetchGlossary} />
+            ) : glossaryTerms.length > 0 ? (
+              <DataTable
+                columns={[
+                  { key: 'name', label: 'Term' },
+                  { key: 'definition', label: 'Definition' },
+                ]}
+                data={glossaryTerms}
+                caption="Business glossary terms available to the AI analyst"
+              />
+            ) : (
+              <div className="p-6">
+                <EmptyState title="No glossary terms defined" description="Add glossary terms to make business language consistent." />
+              </div>
+            )}
+          </section>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

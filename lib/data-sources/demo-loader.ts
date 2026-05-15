@@ -7,56 +7,79 @@ import { createDataSourceService, DataSource } from "./data-source-service";
 const DEMO_METRICS = [
   {
     name: "MRR",
+    slug: "mrr",
     description:
       "Monthly Recurring Revenue - sum of all active subscription MRR values",
     formula: "SUM(subscriptions.mrr_cents) / 100 WHERE subscriptions.status = 'active'",
+    rootEntity: "Subscription",
+    measure: "subscription_mrr",
+    timeDimension: "month",
+    calculation: { type: "measure", measure: "subscription_mrr", aggregation: "sum" },
+    filters: [{ field: "status", operator: "eq", value: "active" }],
   },
   {
     name: "ARR",
+    slug: "arr",
     description:
       "Annual Recurring Revenue - MRR multiplied by 12",
     formula: "SUM(subscriptions.mrr_cents) / 100 * 12 WHERE subscriptions.status = 'active'",
+    rootEntity: "Subscription",
+    measure: "subscription_mrr",
+    timeDimension: "month",
+    calculation: { type: "measure", measure: "subscription_mrr", aggregation: "sum", multiplier: 12 },
+    filters: [{ field: "status", operator: "eq", value: "active" }],
   },
   {
     name: "Churn Rate",
+    slug: "churn_rate",
     description:
       "Percentage of customers who canceled their subscription in a given period",
     formula:
       "COUNT(subscriptions WHERE status = 'canceled' AND ended_at IN period) / COUNT(subscriptions WHERE started_at < period_start)",
+    rootEntity: "Subscription",
+    timeDimension: "week",
+    calculation: {
+      type: "expression",
+      expression:
+        "COUNT(DISTINCT CASE WHEN {root}.\"status\" = 'canceled' THEN {root}.\"customer_id\" END)::float / NULLIF(COUNT(DISTINCT {root}.\"customer_id\"), 0) * 100",
+    },
+    filters: [],
   },
   {
     name: "Active Users",
+    slug: "active_users",
     description:
       "Count of unique customers with at least one product event in the last 30 days",
     formula:
       "COUNT(DISTINCT product_events.customer_id) WHERE product_events.occurred_at >= NOW() - INTERVAL '30 days'",
-  },
-  {
-    name: "ARPA",
-    description:
-      "Average Revenue Per Account - MRR divided by number of active customers",
-    formula:
-      "SUM(subscriptions.mrr_cents) / 100 / COUNT(DISTINCT subscriptions.customer_id) WHERE subscriptions.status = 'active'",
-  },
-  {
-    name: "NRR",
-    description:
-      "Net Revenue Retention - measures revenue retained from existing customers including expansion and contraction",
-    formula:
-      "(MRR_end_of_period - MRR_from_new_customers) / MRR_start_of_period * 100",
+    rootEntity: "Product Event",
+    timeDimension: "week",
+    calculation: { type: "count", distinct: "customer_id" },
+    filters: [],
   },
   {
     name: "Expansion Revenue",
+    slug: "expansion_revenue",
     description:
       "Additional revenue from existing customers who upgraded their plan",
     formula:
-      "SUM(new_mrr - old_mrr) WHERE subscription plan upgraded in period",
+      "SUM(invoices.amount_cents) / 100 WHERE invoices.status = 'paid'",
+    rootEntity: "Invoice",
+    measure: "invoice_amount",
+    timeDimension: "month",
+    calculation: { type: "measure", measure: "invoice_amount", aggregation: "sum" },
+    filters: [{ field: "status", operator: "eq", value: "paid" }],
   },
   {
     name: "Support Ticket Volume",
+    slug: "support_ticket_volume",
     description:
       "Total number of support tickets created in a given period",
     formula: "COUNT(support_tickets) WHERE support_tickets.created_at IN period",
+    rootEntity: "Support Ticket",
+    timeDimension: "week",
+    calculation: { type: "count" },
+    filters: [],
   },
 ];
 
@@ -138,100 +161,85 @@ const DEMO_DASHBOARDS = [
 const DEMO_ENTITIES = [
   {
     tableName: "customers",
-    name: "Customers",
+    name: "Customer",
+    slug: "customer",
     description:
       "Customer accounts with plan, status, and demographic information",
     dimensions: [
-      { name: "customer_id", source_column: "id", data_type: "text" as const, description: "Unique customer identifier" },
-      { name: "name", source_column: "name", data_type: "text" as const, description: "Customer full name" },
-      { name: "company", source_column: "company", data_type: "text" as const, description: "Customer company name" },
-      { name: "plan", source_column: "plan", data_type: "text" as const, description: "Subscription plan tier" },
-      { name: "status", source_column: "status", data_type: "text" as const, description: "Customer account status" },
-      { name: "country", source_column: "country", data_type: "text" as const, description: "Customer country code" },
-      { name: "industry", source_column: "industry", data_type: "text" as const, description: "Customer industry vertical" },
-      { name: "created_at", source_column: "created_at", data_type: "timestamp" as const, description: "Account creation date" },
+      { name: "Customer ID", slug: "customer_id", source_column: "id", data_type: "text" as const, description: "Unique customer identifier" },
+      { name: "Customer Email", slug: "customer_email", source_column: "email", data_type: "text" as const, description: "Customer email address", is_pii: true, required_role: "admin" as const },
+      { name: "Plan", slug: "plan", source_column: "plan", data_type: "text" as const, description: "Subscription plan tier" },
+      { name: "Region", slug: "region", source_column: "country", data_type: "text" as const, description: "Customer country used as region" },
+      { name: "Segment", slug: "segment", source_column: "industry", data_type: "text" as const, description: "Customer industry segment" },
+      { name: "Customer Created At", slug: "customer_created_at", source_column: "created_at", data_type: "timestamp" as const, description: "Account creation date" },
     ],
-    measures: [] as { name: string; source_column: string; data_type: "integer" | "float"; description: string; aggregation: "sum" | "count" | "average" | "min" | "max" }[],
+    measures: [] as Array<{ name: string; slug: string; source_column?: string; expression?: string; data_type: "integer" | "float"; description: string; aggregation: "sum" | "count" | "average" | "min" | "max" }>,
   },
   {
     tableName: "subscriptions",
-    name: "Subscriptions",
+    name: "Subscription",
+    slug: "subscription",
     description:
       "Subscription records with plan details, MRR, and lifecycle dates",
     dimensions: [
-      { name: "subscription_id", source_column: "id", data_type: "text" as const, description: "Unique subscription identifier" },
-      { name: "customer_id", source_column: "customer_id", data_type: "text" as const, description: "Associated customer" },
-      { name: "plan", source_column: "plan", data_type: "text" as const, description: "Plan tier name" },
-      { name: "status", source_column: "status", data_type: "text" as const, description: "Subscription status (active, canceled)" },
-      { name: "billing_interval", source_column: "billing_interval", data_type: "text" as const, description: "Billing frequency" },
-      { name: "started_at", source_column: "started_at", data_type: "timestamp" as const, description: "Subscription start date" },
-      { name: "ended_at", source_column: "ended_at", data_type: "timestamp" as const, description: "Subscription end date (if canceled)" },
+      { name: "Subscription ID", slug: "subscription_id", source_column: "id", data_type: "text" as const, description: "Unique subscription identifier" },
+      { name: "Customer ID", slug: "customer_id", source_column: "customer_id", data_type: "text" as const, description: "Associated customer" },
+      { name: "Plan", slug: "plan", source_column: "plan", data_type: "text" as const, description: "Plan tier name" },
+      { name: "Status", slug: "status", source_column: "status", data_type: "text" as const, description: "Subscription status" },
+      { name: "Month", slug: "month", source_column: "started_at", data_type: "timestamp" as const, description: "Subscription start month", time_grain: "month" as const },
+      { name: "Week", slug: "week", source_column: "ended_at", data_type: "timestamp" as const, description: "Subscription end week", time_grain: "week" as const },
+      { name: "Started At", slug: "started_at", source_column: "started_at", data_type: "timestamp" as const, description: "Subscription start date" },
+      { name: "Ended At", slug: "ended_at", source_column: "ended_at", data_type: "timestamp" as const, description: "Subscription end date" },
     ],
     measures: [
-      { name: "mrr_cents", source_column: "mrr_cents", data_type: "integer" as const, description: "Monthly recurring revenue in cents", aggregation: "sum" as const },
+      { name: "Subscription MRR", slug: "subscription_mrr", source_column: "mrr_cents", expression: "({alias}.\"mrr_cents\" / 100.0)", data_type: "float" as const, description: "Monthly recurring revenue in dollars", aggregation: "sum" as const },
     ],
   },
   {
     tableName: "invoices",
-    name: "Invoices",
+    name: "Invoice",
+    slug: "invoice",
     description: "Invoice records with amounts, status, and payment dates",
     dimensions: [
-      { name: "invoice_id", source_column: "id", data_type: "text" as const, description: "Unique invoice identifier" },
-      { name: "customer_id", source_column: "customer_id", data_type: "text" as const, description: "Associated customer" },
-      { name: "subscription_id", source_column: "subscription_id", data_type: "text" as const, description: "Associated subscription" },
-      { name: "currency", source_column: "currency", data_type: "text" as const, description: "Invoice currency" },
-      { name: "status", source_column: "status", data_type: "text" as const, description: "Invoice status (paid, void, pending)" },
-      { name: "issued_at", source_column: "issued_at", data_type: "timestamp" as const, description: "Invoice issue date" },
-      { name: "paid_at", source_column: "paid_at", data_type: "timestamp" as const, description: "Payment received date" },
+      { name: "Invoice ID", slug: "invoice_id", source_column: "id", data_type: "text" as const, description: "Unique invoice identifier" },
+      { name: "Customer ID", slug: "customer_id", source_column: "customer_id", data_type: "text" as const, description: "Associated customer" },
+      { name: "Subscription ID", slug: "subscription_id", source_column: "subscription_id", data_type: "text" as const, description: "Associated subscription" },
+      { name: "Status", slug: "status", source_column: "status", data_type: "text" as const, description: "Invoice status" },
+      { name: "Month", slug: "month", source_column: "issued_at", data_type: "timestamp" as const, description: "Invoice issue month", time_grain: "month" as const },
+      { name: "Week", slug: "week", source_column: "issued_at", data_type: "timestamp" as const, description: "Invoice issue week", time_grain: "week" as const },
     ],
     measures: [
-      { name: "amount_cents", source_column: "amount_cents", data_type: "integer" as const, description: "Invoice amount in cents", aggregation: "sum" as const },
-    ],
-  },
-  {
-    tableName: "payments",
-    name: "Payments",
-    description: "Payment transaction records with amounts and processing details",
-    dimensions: [
-      { name: "payment_id", source_column: "id", data_type: "text" as const, description: "Unique payment identifier" },
-      { name: "invoice_id", source_column: "invoice_id", data_type: "text" as const, description: "Associated invoice" },
-      { name: "customer_id", source_column: "customer_id", data_type: "text" as const, description: "Associated customer" },
-      { name: "method", source_column: "method", data_type: "text" as const, description: "Payment method (card, wire)" },
-      { name: "status", source_column: "status", data_type: "text" as const, description: "Payment status" },
-      { name: "processed_at", source_column: "processed_at", data_type: "timestamp" as const, description: "Payment processing timestamp" },
-    ],
-    measures: [
-      { name: "amount_cents", source_column: "amount_cents", data_type: "integer" as const, description: "Payment amount in cents", aggregation: "sum" as const },
+      { name: "Invoice Amount", slug: "invoice_amount", source_column: "amount_cents", expression: "({alias}.\"amount_cents\" / 100.0)", data_type: "float" as const, description: "Invoice amount in dollars", aggregation: "sum" as const },
     ],
   },
   {
     tableName: "product_events",
-    name: "Product Events",
+    name: "Product Event",
+    slug: "product_event",
     description: "User activity and product usage events with properties",
     dimensions: [
-      { name: "event_id", source_column: "id", data_type: "text" as const, description: "Unique event identifier" },
-      { name: "customer_id", source_column: "customer_id", data_type: "text" as const, description: "Associated customer" },
-      { name: "event_name", source_column: "event_name", data_type: "text" as const, description: "Type of product event" },
-      { name: "session_id", source_column: "session_id", data_type: "text" as const, description: "User session identifier" },
-      { name: "occurred_at", source_column: "occurred_at", data_type: "timestamp" as const, description: "Event timestamp" },
+      { name: "Event ID", slug: "event_id", source_column: "id", data_type: "text" as const, description: "Unique event identifier" },
+      { name: "Customer ID", slug: "customer_id", source_column: "customer_id", data_type: "text" as const, description: "Associated customer" },
+      { name: "Product Area", slug: "product_area", source_column: "event_name", data_type: "text" as const, description: "Product area inferred from event name" },
+      { name: "Month", slug: "month", source_column: "occurred_at", data_type: "timestamp" as const, description: "Event month", time_grain: "month" as const },
+      { name: "Week", slug: "week", source_column: "occurred_at", data_type: "timestamp" as const, description: "Event week", time_grain: "week" as const },
     ],
-    measures: [] as { name: string; source_column: string; data_type: "integer" | "float"; description: string; aggregation: "sum" | "count" | "average" | "min" | "max" }[],
+    measures: [] as Array<{ name: string; slug: string; source_column?: string; expression?: string; data_type: "integer" | "float"; description: string; aggregation: "sum" | "count" | "average" | "min" | "max" }>,
   },
   {
     tableName: "support_tickets",
-    name: "Support Tickets",
+    name: "Support Ticket",
+    slug: "support_ticket",
     description: "Customer support tickets with priority, status, and resolution tracking",
     dimensions: [
-      { name: "ticket_id", source_column: "id", data_type: "text" as const, description: "Unique ticket identifier" },
-      { name: "customer_id", source_column: "customer_id", data_type: "text" as const, description: "Associated customer" },
-      { name: "subject", source_column: "subject", data_type: "text" as const, description: "Ticket subject line" },
-      { name: "priority", source_column: "priority", data_type: "text" as const, description: "Ticket priority level" },
-      { name: "status", source_column: "status", data_type: "text" as const, description: "Ticket status (open, resolved)" },
-      { name: "category", source_column: "category", data_type: "text" as const, description: "Ticket category" },
-      { name: "created_at", source_column: "created_at", data_type: "timestamp" as const, description: "Ticket creation date" },
-      { name: "resolved_at", source_column: "resolved_at", data_type: "timestamp" as const, description: "Ticket resolution date" },
+      { name: "Ticket ID", slug: "ticket_id", source_column: "id", data_type: "text" as const, description: "Unique ticket identifier" },
+      { name: "Customer ID", slug: "customer_id", source_column: "customer_id", data_type: "text" as const, description: "Associated customer" },
+      { name: "Ticket Priority", slug: "ticket_priority", source_column: "priority", data_type: "text" as const, description: "Ticket priority level" },
+      { name: "Status", slug: "status", source_column: "status", data_type: "text" as const, description: "Ticket status" },
+      { name: "Month", slug: "month", source_column: "created_at", data_type: "timestamp" as const, description: "Ticket creation month", time_grain: "month" as const },
+      { name: "Week", slug: "week", source_column: "created_at", data_type: "timestamp" as const, description: "Ticket creation week", time_grain: "week" as const },
     ],
-    measures: [] as { name: string; source_column: string; data_type: "integer" | "float"; description: string; aggregation: "sum" | "count" | "average" | "min" | "max" }[],
+    measures: [] as Array<{ name: string; slug: string; source_column?: string; expression?: string; data_type: "integer" | "float"; description: string; aggregation: "sum" | "count" | "average" | "min" | "max" }>,
   },
 ];
 
@@ -274,10 +282,31 @@ export async function loadFullDemoDataset(
   // 2. Create semantic entities with dimensions and measures
   const entityIds: string[] = [];
   const entityMap = new Map<string, string>(); // entity name -> entity ID
+  const dimensionMap = new Map<string, string>(); // Entity.Dimension slug -> dimension ID
+  const measureMap = new Map<string, string>(); // Entity.Measure slug -> measure ID
 
   for (const entityDef of DEMO_ENTITIES) {
     const dataSourceId = dataSourceMap.get(entityDef.tableName);
     if (!dataSourceId) continue;
+    const sourceTable = `demo.${entityDef.tableName}`;
+
+    const { data: model, error: modelError } = await insforge
+      .from("semantic_models")
+      .insert({
+        workspace_id: workspaceId,
+        name: entityDef.name,
+        slug: entityDef.slug,
+        description: entityDef.description,
+        source_table: sourceTable,
+      })
+      .select("id")
+      .single();
+
+    if (modelError || !model) {
+      throw new Error(
+        modelError?.message ?? `Failed to create semantic model: ${entityDef.name}`
+      );
+    }
 
     // Create the entity
     const { data: entity, error: entityError } = await insforge
@@ -285,8 +314,12 @@ export async function loadFullDemoDataset(
       .insert({
         workspace_id: workspaceId,
         data_source_id: dataSourceId,
+        model_id: model.id,
         name: entityDef.name,
+        slug: entityDef.slug,
         description: entityDef.description,
+        source_table: sourceTable,
+        primary_key: "id",
       })
       .select("id")
       .single();
@@ -305,19 +338,29 @@ export async function loadFullDemoDataset(
       const dimensionInserts = entityDef.dimensions.map((dim) => ({
         entity_id: entity.id,
         name: dim.name,
+        slug: dim.slug,
         description: dim.description,
         data_type: dim.data_type,
         source_column: dim.source_column,
+        expression: null,
+        time_grain: "time_grain" in dim ? dim.time_grain : null,
+        is_pii: "is_pii" in dim ? dim.is_pii : false,
+        required_role: "required_role" in dim ? dim.required_role : "viewer",
       }));
 
-      const { error: dimError } = await insforge
-        .from("dimensions")
-        .insert(dimensionInserts);
+      const { data: createdDimensions, error: dimError } = await insforge
+        .from("semantic_dimensions")
+        .insert(dimensionInserts)
+        .select("id, slug");
 
       if (dimError) {
         throw new Error(
           `Failed to create dimensions for ${entityDef.name}: ${dimError.message}`
         );
+      }
+
+      for (const dimension of (createdDimensions ?? []) as Array<{ id: string; slug: string }>) {
+        dimensionMap.set(`${entityDef.name}.${dimension.slug}`, dimension.id);
       }
     }
 
@@ -326,20 +369,67 @@ export async function loadFullDemoDataset(
       const measureInserts = entityDef.measures.map((meas) => ({
         entity_id: entity.id,
         name: meas.name,
+        slug: meas.slug,
         description: meas.description,
         data_type: meas.data_type,
-        source_column: meas.source_column,
+        source_column: meas.source_column ?? null,
+        expression: meas.expression ?? null,
         default_aggregation: meas.aggregation,
       }));
 
-      const { error: measError } = await insforge
-        .from("measures")
-        .insert(measureInserts);
+      const { data: createdMeasures, error: measError } = await insforge
+        .from("semantic_measures")
+        .insert(measureInserts)
+        .select("id, slug");
 
       if (measError) {
         throw new Error(
           `Failed to create measures for ${entityDef.name}: ${measError.message}`
         );
+      }
+
+      for (const measure of (createdMeasures ?? []) as Array<{ id: string; slug: string }>) {
+        measureMap.set(`${entityDef.name}.${measure.slug}`, measure.id);
+      }
+    }
+  }
+
+  const customerEntityId = entityMap.get("Customer");
+  const relationshipDefinitions = [
+    { source: "Subscription", sourceColumn: "customer_id", target: "Customer", targetColumn: "id" },
+    { source: "Invoice", sourceColumn: "customer_id", target: "Customer", targetColumn: "id" },
+    { source: "Product Event", sourceColumn: "customer_id", target: "Customer", targetColumn: "id" },
+    { source: "Support Ticket", sourceColumn: "customer_id", target: "Customer", targetColumn: "id" },
+  ];
+
+  if (customerEntityId) {
+    const relationshipInserts = relationshipDefinitions
+      .map((relationship) => ({
+        workspace_id: workspaceId,
+        source_entity_id: entityMap.get(relationship.source),
+        target_entity_id: entityMap.get(relationship.target),
+        join_type: "left",
+        source_column: relationship.sourceColumn,
+        target_column: relationship.targetColumn,
+      }))
+      .filter(
+        (relationship): relationship is {
+          workspace_id: string;
+          source_entity_id: string;
+          target_entity_id: string;
+          join_type: "left";
+          source_column: string;
+          target_column: string;
+        } => !!relationship.source_entity_id && !!relationship.target_entity_id
+      );
+
+    if (relationshipInserts.length > 0) {
+      const { error: relationshipError } = await insforge
+        .from("semantic_relationships")
+        .insert(relationshipInserts);
+
+      if (relationshipError) {
+        throw new Error(`Failed to create semantic relationships: ${relationshipError.message}`);
       }
     }
   }
@@ -348,17 +438,30 @@ export async function loadFullDemoDataset(
   const metricIds: string[] = [];
 
   for (const metricDef of DEMO_METRICS) {
+    const rootEntityId = entityMap.get(metricDef.rootEntity);
+    if (!rootEntityId) {
+      throw new Error(`Failed to create metric ${metricDef.name}: missing root entity`);
+    }
+
     const { data: metric, error: metricError } = await insforge
       .from("metrics")
       .insert({
         workspace_id: workspaceId,
         name: metricDef.name,
+        slug: metricDef.slug,
         description: metricDef.description,
         formula: metricDef.formula,
         certified: true,
         certified_by: userId,
         certified_at: new Date().toISOString(),
         created_by: userId,
+        root_entity_id: rootEntityId,
+        measure_id: "measure" in metricDef && metricDef.measure
+          ? measureMap.get(`${metricDef.rootEntity}.${metricDef.measure}`) ?? null
+          : null,
+        time_dimension_id: dimensionMap.get(`${metricDef.rootEntity}.${metricDef.timeDimension}`) ?? null,
+        calculation: metricDef.calculation,
+        filters: metricDef.filters,
       })
       .select("id")
       .single();
