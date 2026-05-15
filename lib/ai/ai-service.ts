@@ -1,29 +1,33 @@
 /**
  * AI Service implementation.
  *
- * Provides generateSQL, generateSummary, and chat methods with:
- * - Confidence score generation (0.0-1.0)
- * - Citation generation linking to metrics, entities, and data sources
- * - Assumption listing
- * - AI trace records for every AI call
- * - Retry logic (one retry on provider error, then graceful error message)
- * - Server-side only execution (never expose API keys to client)
+ * The analyst model is constrained to SemanticQuery JSON. It never returns raw
+ * SQL; the semantic compiler is the only code path that produces SQL.
  */
 
-import { InsForgeDatabaseClient } from '@/lib/insforge/types';
-import { AIProvider, AIProviderConfig, Message } from './provider';
-import { createAIProvider } from './provider-factory';
-
-// --- Interfaces ---
+import { InsForgeDatabaseClient } from "@/lib/insforge/types";
+import type { SemanticQuery } from "@/lib/semantic/types";
+import { AIProvider, AIProviderConfig, Message } from "./provider";
+import { createAIProvider } from "./provider-factory";
 
 export interface SemanticContext {
-  entities: { name: string; description: string | null }[];
-  metrics: { name: string; formula: string; certified: boolean }[];
+  entities: Array<{
+    name: string;
+    slug?: string;
+    description: string | null;
+    dimensions?: string[];
+  }>;
+  metrics: Array<{
+    name: string;
+    slug?: string;
+    formula: string;
+    certified: boolean;
+  }>;
   glossaryTerms: { name: string; definition: string }[];
 }
 
 export interface Citation {
-  type: 'metric' | 'entity' | 'data_source';
+  type: "metric" | "entity" | "dimension" | "measure" | "relationship" | "glossary";
   name: string;
   id: string;
 }
@@ -39,17 +43,16 @@ export interface AITrace {
   timestamp: string;
 }
 
-export interface SQLGenerationInput {
+export interface SemanticQueryGenerationInput {
   question: string;
   semanticContext: SemanticContext;
   conversationHistory?: Message[];
   workspaceId: string;
 }
 
-export interface SQLGenerationResult {
-  sql: string;
+export interface SemanticQueryGenerationResult {
+  semanticQuery: SemanticQuery | null;
   confidence: number;
-  citations: Citation[];
   assumptions: string[];
   trace: AITrace;
 }
@@ -78,29 +81,37 @@ export interface ChatResult {
 }
 
 export interface AIService {
-  generateSQL(input: SQLGenerationInput): Promise<SQLGenerationResult>;
+  generateSemanticQuery(input: SemanticQueryGenerationInput): Promise<SemanticQueryGenerationResult>;
   generateSummary(input: SummaryInput): Promise<SummaryResult>;
   chat(input: ChatInput): Promise<ChatResult>;
 }
 
-// --- Prompt Templates ---
-
-const SQL_GENERATION_TEMPLATE = `You are a SQL generation assistant for a business intelligence platform.
-Given the user's question and the semantic context (entities, metrics, glossary terms),
-generate a valid SQL SELECT query that answers the question.
+const SEMANTIC_QUERY_GENERATION_TEMPLATE = `You are a semantic-query assistant for a business intelligence platform.
+The user asks a business analytics question. Return SemanticQuery JSON only.
 
 Respond with a JSON object containing:
-- "sql": the generated SQL query (SELECT only)
-- "confidence": a number between 0.0 and 1.0 indicating your certainty
-- "citations": an array of objects with "type" (metric|entity|data_source), "name", and "id"
-- "assumptions": an array of strings listing any assumptions made
+- "semanticQuery": an object with keys:
+  - "metrics": array of metric slugs
+  - "dimensions": optional array of dimension slugs
+  - "time": optional object { "dimension": string, "grain": "day"|"week"|"month"|"quarter"|"year" }
+  - "filters": optional array of { "field": string, "operator": "eq"|"neq"|"gt"|"gte"|"lt"|"lte"|"in"|"not_in"|"contains"|"starts_with"|"ends_with"|"is_null"|"is_not_null", "value": string|number|boolean|null|array }
+  - "orderBy": optional array of { "field": string, "direction": "asc"|"desc" }
+  - "limit": optional positive integer
+- "confidence": a number between 0.0 and 1.0
+- "assumptions": an array of strings
+
+Rules:
+- Never return SQL.
+- Never invent calculated expressions.
+- Use only metrics, dimensions, and glossary concepts from the semantic context.
+- Prefer certified metrics.
 
 Semantic Context:
 {{semanticContext}}
 
 Question: {{question}}`;
 
-const SUMMARY_GENERATION_TEMPLATE = `You are a data analyst assistant. Given the user's question, the SQL query that was executed, and the query results, provide a clear and concise natural language summary of the findings.
+const SUMMARY_GENERATION_TEMPLATE = `You are a data analyst assistant. Given the user's question, the compiled SQL query that was executed, and the query results, provide a clear and concise natural language summary.
 
 Respond with a JSON object containing:
 - "summary": a clear natural language summary of the results
@@ -115,169 +126,102 @@ Answer the user's message based on the conversation context.
 Respond with a JSON object containing:
 - "response": your response text`;
 
-// --- Helper Functions ---
-
-/**
- * Generates a UUID v4 string.
- */
 function generateId(): string {
   return crypto.randomUUID();
 }
 
-/**
- * Builds the system prompt for SQL generation with semantic context injected.
- */
-export function buildSQLPrompt(question: string, semanticContext: SemanticContext): string {
+export function buildSemanticQueryPrompt(question: string, semanticContext: SemanticContext): string {
   const contextStr = JSON.stringify(
     {
-      entities: semanticContext.entities.map((e) => ({
-        name: e.name,
-        description: e.description,
+      entities: semanticContext.entities.map((entity) => ({
+        name: entity.name,
+        slug: entity.slug,
+        description: entity.description,
+        dimensions: entity.dimensions ?? [],
       })),
-      metrics: semanticContext.metrics.map((m) => ({
-        name: m.name,
-        formula: m.formula,
-        certified: m.certified,
+      metrics: semanticContext.metrics.map((metric) => ({
+        name: metric.name,
+        slug: metric.slug,
+        formula: metric.formula,
+        certified: metric.certified,
       })),
-      glossaryTerms: semanticContext.glossaryTerms.map((t) => ({
-        name: t.name,
-        definition: t.definition,
+      glossaryTerms: semanticContext.glossaryTerms.map((term) => ({
+        name: term.name,
+        definition: term.definition,
       })),
     },
     null,
     2
   );
 
-  return SQL_GENERATION_TEMPLATE.replace('{{semanticContext}}', contextStr).replace(
-    '{{question}}',
+  return SEMANTIC_QUERY_GENERATION_TEMPLATE.replace("{{semanticContext}}", contextStr).replace(
+    "{{question}}",
     question
   );
 }
 
-/**
- * Builds the system prompt for summary generation.
- */
 export function buildSummaryPrompt(
   question: string,
   sql: string,
   results: Record<string, unknown>[]
 ): string {
-  const resultsStr = JSON.stringify(results.slice(0, 20), null, 2); // Limit to 20 rows for prompt size
-  return SUMMARY_GENERATION_TEMPLATE.replace('{{question}}', question)
-    .replace('{{sql}}', sql)
-    .replace('{{results}}', resultsStr);
+  const resultsStr = JSON.stringify(results.slice(0, 20), null, 2);
+  return SUMMARY_GENERATION_TEMPLATE.replace("{{question}}", question)
+    .replace("{{sql}}", sql)
+    .replace("{{results}}", resultsStr);
 }
 
-/**
- * Parses the AI provider response for SQL generation.
- * Extracts sql, confidence, citations, and assumptions from the JSON response.
- * Falls back to defaults if parsing fails.
- */
-export function parseSQLResponse(
-  rawContent: string,
-  semanticContext: SemanticContext
-): { sql: string; confidence: number; citations: Citation[]; assumptions: string[] } {
+export function parseSemanticQueryResponse(
+  rawContent: string
+): { semanticQuery: SemanticQuery | null; confidence: number; assumptions: string[] } {
   try {
     const parsed = JSON.parse(rawContent);
-    const sql = typeof parsed.sql === 'string' ? parsed.sql : 'SELECT 1';
-    const confidence = typeof parsed.confidence === 'number'
-      ? Math.max(0, Math.min(1, parsed.confidence))
-      : 0.5;
-    const citations = Array.isArray(parsed.citations)
-      ? parsed.citations.filter(
-          (c: unknown) =>
-            c &&
-            typeof c === 'object' &&
-            'type' in (c as object) &&
-            'name' in (c as object) &&
-            'id' in (c as object)
-        )
-      : generateCitations(sql, semanticContext);
+    const candidate = parsed.semanticQuery ?? parsed;
+    const semanticQuery = isSemanticQueryLike(candidate) ? candidate : null;
+    const confidence =
+      typeof parsed.confidence === "number" ? Math.max(0, Math.min(1, parsed.confidence)) : 0.5;
     const assumptions = Array.isArray(parsed.assumptions)
-      ? parsed.assumptions.filter((a: unknown) => typeof a === 'string')
+      ? parsed.assumptions.filter((assumption: unknown) => typeof assumption === "string")
       : [];
 
-    return { sql, confidence, citations, assumptions };
+    return { semanticQuery, confidence: semanticQuery ? confidence : 0, assumptions };
   } catch {
-    // If the response isn't valid JSON, try to extract SQL from the raw text
     return {
-      sql: rawContent.trim() || 'SELECT 1',
-      confidence: 0.3,
-      citations: generateCitations(rawContent, semanticContext),
-      assumptions: ['Response could not be fully parsed; confidence is reduced'],
+      semanticQuery: null,
+      confidence: 0,
+      assumptions: ["Response was not valid SemanticQuery JSON"],
     };
   }
 }
 
-/**
- * Parses the AI provider response for summary generation.
- */
+function isSemanticQueryLike(value: unknown): value is SemanticQuery {
+  if (!value || typeof value !== "object") return false;
+  const query = value as Record<string, unknown>;
+  return Array.isArray(query.metrics) && query.metrics.every((metric) => typeof metric === "string");
+}
+
 export function parseSummaryResponse(rawContent: string): string {
   try {
     const parsed = JSON.parse(rawContent);
-    if (typeof parsed.summary === 'string') {
-      return parsed.summary;
-    }
-    if (typeof parsed.response === 'string') {
-      return parsed.response;
-    }
+    if (typeof parsed.summary === "string") return parsed.summary;
+    if (typeof parsed.response === "string") return parsed.response;
     return rawContent;
   } catch {
     return rawContent;
   }
 }
 
-/**
- * Parses the AI provider response for chat.
- */
 export function parseChatResponse(rawContent: string): string {
   try {
     const parsed = JSON.parse(rawContent);
-    if (typeof parsed.response === 'string') {
-      return parsed.response;
-    }
-    if (typeof parsed.message === 'string') {
-      return parsed.message;
-    }
+    if (typeof parsed.response === "string") return parsed.response;
+    if (typeof parsed.message === "string") return parsed.message;
     return rawContent;
   } catch {
     return rawContent;
   }
 }
 
-/**
- * Generates citations by matching SQL content against semantic context.
- */
-export function generateCitations(sql: string, semanticContext: SemanticContext): Citation[] {
-  const citations: Citation[] = [];
-  const lowerSql = sql.toLowerCase();
-
-  for (const metric of semanticContext.metrics) {
-    if (lowerSql.includes(metric.name.toLowerCase())) {
-      citations.push({
-        type: 'metric',
-        name: metric.name,
-        id: metric.name, // Use name as fallback ID
-      });
-    }
-  }
-
-  for (const entity of semanticContext.entities) {
-    if (lowerSql.includes(entity.name.toLowerCase())) {
-      citations.push({
-        type: 'entity',
-        name: entity.name,
-        id: entity.name, // Use name as fallback ID
-      });
-    }
-  }
-
-  return citations;
-}
-
-/**
- * Stores an AI trace record in the database.
- */
 async function storeTrace(
   insforge: InsForgeDatabaseClient,
   trace: AITrace,
@@ -286,7 +230,7 @@ async function storeTrace(
   citations?: Citation[],
   assumptions?: string[]
 ): Promise<void> {
-  await insforge.from('ai_traces').insert({
+  await insforge.from("ai_traces").insert({
     id: trace.id,
     workspace_id: workspaceId,
     prompt_template: trace.promptTemplate,
@@ -303,10 +247,6 @@ async function storeTrace(
   });
 }
 
-/**
- * Calls the AI provider with retry logic.
- * Retries once on provider error, then returns a graceful error.
- */
 export async function callWithRetry(
   provider: AIProvider,
   messages: Message[],
@@ -314,13 +254,12 @@ export async function callWithRetry(
 ): Promise<{ content: string; model: string; usage: { inputTokens: number; outputTokens: number } } | { error: string }> {
   try {
     return await provider.complete(messages, options);
-  } catch (firstError) {
-    // Retry once
+  } catch {
     try {
       return await provider.complete(messages, options);
     } catch (secondError) {
       const errorMessage =
-        secondError instanceof Error ? secondError.message : 'Unknown AI provider error';
+        secondError instanceof Error ? secondError.message : "Unknown AI provider error";
       return {
         error: `AI service is temporarily unavailable. Please try again later. (${errorMessage})`,
       };
@@ -328,85 +267,53 @@ export async function callWithRetry(
   }
 }
 
-// --- Factory ---
-
-/**
- * Creates an AIService instance.
- *
- * @param insforge - InsForge client for storing AI traces
- * @param config - Optional AI provider configuration. If not provided, uses MockAIProvider.
- */
 export function createAIService(insforge: InsForgeDatabaseClient, config?: AIProviderConfig): AIService {
   const provider = createAIProvider(config);
 
   return {
-    async generateSQL(input: SQLGenerationInput): Promise<SQLGenerationResult> {
+    async generateSemanticQuery(input: SemanticQueryGenerationInput): Promise<SemanticQueryGenerationResult> {
       const startTime = Date.now();
       const traceId = generateId();
-      const promptTemplate = SQL_GENERATION_TEMPLATE;
-      const fullPrompt = buildSQLPrompt(input.question, input.semanticContext);
-
-      // Build messages array
+      const promptTemplate = SEMANTIC_QUERY_GENERATION_TEMPLATE;
+      const fullPrompt = buildSemanticQueryPrompt(input.question, input.semanticContext);
       const messages: Message[] = [];
 
-      // Include conversation history if provided
       if (input.conversationHistory && input.conversationHistory.length > 0) {
         messages.push(...input.conversationHistory);
       }
 
-      messages.push({ role: 'system', content: fullPrompt });
-      messages.push({ role: 'user', content: input.question });
+      messages.push({ role: "system", content: fullPrompt });
+      messages.push({ role: "user", content: input.question });
 
-      // Call provider with retry
-      const result = await callWithRetry(provider, messages);
+      const result = await callWithRetry(provider, messages, { temperature: 0.1, maxTokens: 800 });
       const durationMs = Date.now() - startTime;
 
-      // Handle error case
-      if ('error' in result) {
-        const trace: AITrace = {
-          id: traceId,
-          promptTemplate,
-          fullPrompt,
-          rawResponse: result.error,
-          durationMs,
-          tokenCount: { input: 0, output: 0 },
-          model: 'unknown',
-          timestamp: new Date().toISOString(),
-        };
-
-        // Store trace even on error
-        await storeTrace(insforge, trace, input.workspaceId, 0, [], []);
-
+      if ("error" in result) {
+        const trace = buildTrace(traceId, promptTemplate, fullPrompt, result.error, durationMs, "unknown", 0, 0);
+        await storeTrace(insforge, trace, input.workspaceId, 0, [], ["AI service encountered an error"]);
         return {
-          sql: '',
+          semanticQuery: null,
           confidence: 0,
-          citations: [],
-          assumptions: ['AI service encountered an error'],
+          assumptions: ["AI service encountered an error"],
           trace,
         };
       }
 
-      // Parse the response
-      const { sql, confidence, citations, assumptions } = parseSQLResponse(
-        result.content,
-        input.semanticContext
-      );
-
-      const trace: AITrace = {
-        id: traceId,
+      const parsed = parseSemanticQueryResponse(result.content);
+      const trace = buildTrace(
+        traceId,
         promptTemplate,
         fullPrompt,
-        rawResponse: result.content,
+        result.content,
         durationMs,
-        tokenCount: { input: result.usage.inputTokens, output: result.usage.outputTokens },
-        model: result.model,
-        timestamp: new Date().toISOString(),
-      };
+        result.model,
+        result.usage.inputTokens,
+        result.usage.outputTokens
+      );
 
-      // Store trace record
-      await storeTrace(insforge, trace, input.workspaceId, confidence, citations, assumptions);
+      await storeTrace(insforge, trace, input.workspaceId, parsed.confidence, [], parsed.assumptions);
 
-      return { sql, confidence, citations, assumptions, trace };
+      return { ...parsed, trace };
     },
 
     async generateSummary(input: SummaryInput): Promise<SummaryResult> {
@@ -414,52 +321,36 @@ export function createAIService(insforge: InsForgeDatabaseClient, config?: AIPro
       const traceId = generateId();
       const promptTemplate = SUMMARY_GENERATION_TEMPLATE;
       const fullPrompt = buildSummaryPrompt(input.question, input.sql, input.results);
-
       const messages: Message[] = [
-        { role: 'system', content: fullPrompt },
-        { role: 'user', content: `Summarize the results for: ${input.question}` },
+        { role: "system", content: fullPrompt },
+        { role: "user", content: `Summarize the results for: ${input.question}` },
       ];
 
-      // Call provider with retry
       const result = await callWithRetry(provider, messages);
       const durationMs = Date.now() - startTime;
 
-      // Handle error case
-      if ('error' in result) {
-        const trace: AITrace = {
-          id: traceId,
-          promptTemplate,
-          fullPrompt,
-          rawResponse: result.error,
-          durationMs,
-          tokenCount: { input: 0, output: 0 },
-          model: 'unknown',
-          timestamp: new Date().toISOString(),
-        };
-
+      if ("error" in result) {
+        const trace = buildTrace(traceId, promptTemplate, fullPrompt, result.error, durationMs, "unknown", 0, 0);
         await storeTrace(insforge, trace, input.workspaceId);
-
         return {
-          summary: 'Unable to generate summary at this time. Please try again later.',
+          summary: "Unable to generate summary at this time. Please try again later.",
           trace,
         };
       }
 
       const summary = parseSummaryResponse(result.content);
-
-      const trace: AITrace = {
-        id: traceId,
+      const trace = buildTrace(
+        traceId,
         promptTemplate,
         fullPrompt,
-        rawResponse: result.content,
+        result.content,
         durationMs,
-        tokenCount: { input: result.usage.inputTokens, output: result.usage.outputTokens },
-        model: result.model,
-        timestamp: new Date().toISOString(),
-      };
+        result.model,
+        result.usage.inputTokens,
+        result.usage.outputTokens
+      );
 
       await storeTrace(insforge, trace, input.workspaceId);
-
       return { summary, trace };
     },
 
@@ -468,55 +359,60 @@ export function createAIService(insforge: InsForgeDatabaseClient, config?: AIPro
       const traceId = generateId();
       const promptTemplate = CHAT_TEMPLATE;
       const fullPrompt = CHAT_TEMPLATE;
-
-      // Build messages from conversation history + new message
       const messages: Message[] = [
-        { role: 'system', content: fullPrompt },
+        { role: "system", content: fullPrompt },
         ...input.conversationHistory,
-        { role: 'user', content: input.message },
+        { role: "user", content: input.message },
       ];
 
-      // Call provider with retry
       const result = await callWithRetry(provider, messages);
       const durationMs = Date.now() - startTime;
 
-      // Handle error case
-      if ('error' in result) {
-        const trace: AITrace = {
-          id: traceId,
-          promptTemplate,
-          fullPrompt,
-          rawResponse: result.error,
-          durationMs,
-          tokenCount: { input: 0, output: 0 },
-          model: 'unknown',
-          timestamp: new Date().toISOString(),
-        };
-
+      if ("error" in result) {
+        const trace = buildTrace(traceId, promptTemplate, fullPrompt, result.error, durationMs, "unknown", 0, 0);
         await storeTrace(insforge, trace, input.workspaceId);
-
         return {
-          response: 'I apologize, but I am unable to respond at this time. Please try again later.',
+          response: "I apologize, but I am unable to respond at this time. Please try again later.",
           trace,
         };
       }
 
       const response = parseChatResponse(result.content);
-
-      const trace: AITrace = {
-        id: traceId,
+      const trace = buildTrace(
+        traceId,
         promptTemplate,
         fullPrompt,
-        rawResponse: result.content,
+        result.content,
         durationMs,
-        tokenCount: { input: result.usage.inputTokens, output: result.usage.outputTokens },
-        model: result.model,
-        timestamp: new Date().toISOString(),
-      };
+        result.model,
+        result.usage.inputTokens,
+        result.usage.outputTokens
+      );
 
       await storeTrace(insforge, trace, input.workspaceId);
-
       return { response, trace };
     },
+  };
+}
+
+function buildTrace(
+  id: string,
+  promptTemplate: string,
+  fullPrompt: string,
+  rawResponse: string,
+  durationMs: number,
+  model: string,
+  inputTokens: number,
+  outputTokens: number
+): AITrace {
+  return {
+    id,
+    promptTemplate,
+    fullPrompt,
+    rawResponse,
+    durationMs,
+    tokenCount: { input: inputTokens, output: outputTokens },
+    model,
+    timestamp: new Date().toISOString(),
   };
 }

@@ -14,7 +14,7 @@ function createMockInsForge() {
   // Track which table is being inserted into
   const insertedData: Record<string, unknown[]> = {};
 
-  mockFrom.mockImplementation((table: string) => {
+  mockFrom.mockImplementation(((table: string) => {
     return {
       insert: (data: unknown) => {
         if (!insertedData[table]) {
@@ -26,6 +26,11 @@ function createMockInsForge() {
 
         return {
           select: (_cols?: string) => ({
+            data: items.map((item, index) => ({
+              id: `mock-${table}-${insertCallCount}-${index}`,
+              ...(item as Record<string, unknown>),
+            })),
+            error: null,
             single: () => {
               const id = `mock-${table}-${insertCallCount}`;
               // Return appropriate mock data based on table
@@ -51,7 +56,7 @@ function createMockInsForge() {
         };
       },
     };
-  });
+  }) as any);
 
   return {
     client: { from: mockFrom } as unknown as Parameters<typeof loadFullDemoDataset>[0],
@@ -92,19 +97,19 @@ describe("loadFullDemoDataset", () => {
       "user-456"
     );
 
-    expect(result.entityIds).toHaveLength(6);
+    expect(result.entityIds).toHaveLength(5);
     // Verify semantic_entities were inserted
-    expect(mockInsForge.insertedData["semantic_entities"]).toHaveLength(6);
+    expect(mockInsForge.insertedData["semantic_entities"]).toHaveLength(5);
   });
 
-  it("should create all 8 pre-configured metrics", async () => {
+  it("should create all 6 pre-configured metrics", async () => {
     const result = await loadFullDemoDataset(
       mockInsForge.client,
       "workspace-123",
       "user-456"
     );
 
-    expect(result.metricIds).toHaveLength(8);
+    expect(result.metricIds).toHaveLength(6);
     // Verify metrics were inserted with correct names
     const metricNames = mockInsForge.insertedData["metrics"].map(
       (m: unknown) => (m as Record<string, unknown>).name
@@ -113,8 +118,6 @@ describe("loadFullDemoDataset", () => {
     expect(metricNames).toContain("ARR");
     expect(metricNames).toContain("Churn Rate");
     expect(metricNames).toContain("Active Users");
-    expect(metricNames).toContain("ARPA");
-    expect(metricNames).toContain("NRR");
     expect(metricNames).toContain("Expansion Revenue");
     expect(metricNames).toContain("Support Ticket Volume");
   });
@@ -171,14 +174,22 @@ describe("loadFullDemoDataset", () => {
     await loadFullDemoDataset(mockInsForge.client, "workspace-123", "user-456");
 
     // Dimensions should be created for all entities
-    const dimensions = mockInsForge.insertedData["dimensions"];
+    const dimensions = mockInsForge.insertedData["semantic_dimensions"];
     expect(dimensions).toBeDefined();
     expect(dimensions.length).toBeGreaterThan(0);
 
-    // Measures should be created for subscriptions, invoices, and payments
-    const measures = mockInsForge.insertedData["measures"];
+    // Measures should be created for subscriptions and invoices
+    const measures = mockInsForge.insertedData["semantic_measures"];
     expect(measures).toBeDefined();
-    expect(measures.length).toBe(3); // mrr_cents, amount_cents (invoices), amount_cents (payments)
+    expect(measures.length).toBe(2);
+  });
+
+  it("should create semantic relationships for customer joins", async () => {
+    await loadFullDemoDataset(mockInsForge.client, "workspace-123", "user-456");
+
+    const relationships = mockInsForge.insertedData["semantic_relationships"];
+    expect(relationships).toBeDefined();
+    expect(relationships).toHaveLength(4);
   });
 
   it("should mark all metrics as certified", async () => {

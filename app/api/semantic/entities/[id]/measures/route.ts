@@ -64,6 +64,7 @@ export async function POST(
     description?: string;
     dataType?: string;
     sourceColumn?: string;
+    expression?: string;
     defaultAggregation?: string;
   };
   try {
@@ -75,11 +76,11 @@ export async function POST(
     );
   }
 
-  if (!body.name || !body.dataType || !body.sourceColumn || !body.defaultAggregation) {
+  if (!body.name || !body.dataType || (!body.sourceColumn && !body.expression) || !body.defaultAggregation) {
     return NextResponse.json(
       {
         error: "Bad Request",
-        message: "name, dataType, sourceColumn, and defaultAggregation are required",
+        message: "name, dataType, sourceColumn or expression, and defaultAggregation are required",
       },
       { status: 400 }
     );
@@ -114,6 +115,7 @@ export async function POST(
       description: body.description,
       dataType: body.dataType as "text" | "integer" | "float" | "boolean" | "date" | "timestamp",
       sourceColumn: body.sourceColumn,
+      expression: body.expression,
       defaultAggregation: body.defaultAggregation as "sum" | "count" | "average" | "min" | "max",
     });
     return NextResponse.json({ measure }, { status: 201 });

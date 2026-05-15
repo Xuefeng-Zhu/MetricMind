@@ -79,7 +79,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * POST /api/semantic/metrics
  * Create a new metric.
  * Requires analyst+ role.
- * Body: { name, description?, formula }
+ * Body: { name, description?, formula, rootEntityId?, measureId?, calculation?, filters?, timeDimensionId? }
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const insforge = createClient();
@@ -128,7 +128,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  let body: { name?: string; description?: string; formula?: string };
+  let body: {
+    name?: string;
+    description?: string;
+    formula?: string;
+    rootEntityId?: string;
+    measureId?: string;
+    timeDimensionId?: string;
+    calculation?: { type: "measure"; measure: string; aggregation?: "sum" | "count" | "average" | "min" | "max"; multiplier?: number } | { type: "count"; distinct?: string } | { type: "expression"; expression: string };
+    filters?: Array<{ field: string; operator: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "not_in" | "contains" | "starts_with" | "ends_with" | "is_null" | "is_not_null"; value?: string | number | boolean | null | Array<string | number | boolean | null> }>;
+  };
   try {
     body = await request.json();
   } catch {
@@ -155,6 +164,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       description: body.description,
       formula: body.formula,
       createdBy: user.id,
+      rootEntityId: body.rootEntityId,
+      measureId: body.measureId,
+      timeDimensionId: body.timeDimensionId,
+      calculation: body.calculation,
+      filters: body.filters,
     });
     return NextResponse.json({ metric }, { status: 201 });
   } catch (error) {

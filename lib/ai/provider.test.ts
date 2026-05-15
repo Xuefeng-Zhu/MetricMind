@@ -22,7 +22,7 @@ describe('MockAIProvider', () => {
     expect(result.usage.outputTokens).toBeGreaterThan(0);
   });
 
-  it('returns revenue SQL for revenue keywords', async () => {
+  it('returns revenue SemanticQuery for revenue keywords', async () => {
     const provider = new MockAIProvider();
     const messages: Message[] = [
       { role: 'user', content: 'What is our MRR this month?' },
@@ -31,13 +31,13 @@ describe('MockAIProvider', () => {
     const result = await provider.complete(messages);
     const parsed = JSON.parse(result.content);
 
-    expect(parsed.sql).toContain('mrr');
-    expect(parsed.sql).toContain('subscriptions');
+    expect(parsed.semanticQuery.metrics).toContain('mrr');
+    expect(parsed.semanticQuery.time).toEqual({ dimension: 'month', grain: 'month' });
     expect(parsed.confidence).toBeGreaterThanOrEqual(0.7);
     expect(parsed.confidence).toBeLessThanOrEqual(1.0);
   });
 
-  it('returns customer SQL for customer keywords', async () => {
+  it('returns customer SemanticQuery for customer keywords', async () => {
     const provider = new MockAIProvider();
     const messages: Message[] = [
       { role: 'user', content: 'How many active customers do we have?' },
@@ -46,13 +46,12 @@ describe('MockAIProvider', () => {
     const result = await provider.complete(messages);
     const parsed = JSON.parse(result.content);
 
-    expect(parsed.sql).toContain('customers');
-    expect(parsed.sql).toContain('COUNT');
+    expect(parsed.semanticQuery.metrics).toContain('churn_rate');
     expect(parsed.confidence).toBeGreaterThanOrEqual(0.7);
     expect(parsed.confidence).toBeLessThanOrEqual(1.0);
   });
 
-  it('returns product SQL for product keywords', async () => {
+  it('returns product SemanticQuery for product keywords', async () => {
     const provider = new MockAIProvider();
     const messages: Message[] = [
       { role: 'user', content: 'Show me product event usage' },
@@ -61,13 +60,13 @@ describe('MockAIProvider', () => {
     const result = await provider.complete(messages);
     const parsed = JSON.parse(result.content);
 
-    expect(parsed.sql).toContain('product_events');
-    expect(parsed.sql).toContain('event_name');
+    expect(parsed.semanticQuery.metrics).toContain('active_users');
+    expect(parsed.semanticQuery.dimensions).toContain('product_area');
     expect(parsed.confidence).toBeGreaterThanOrEqual(0.7);
     expect(parsed.confidence).toBeLessThanOrEqual(1.0);
   });
 
-  it('returns aggregation SQL for aggregation keywords', async () => {
+  it('returns aggregation SemanticQuery for aggregation keywords', async () => {
     const provider = new MockAIProvider();
     const messages: Message[] = [
       { role: 'user', content: 'What is the average invoice amount?' },
@@ -76,13 +75,12 @@ describe('MockAIProvider', () => {
     const result = await provider.complete(messages);
     const parsed = JSON.parse(result.content);
 
-    expect(parsed.sql).toContain('AVG');
-    expect(parsed.sql).toContain('invoices');
+    expect(parsed.semanticQuery.metrics).toContain('support_ticket_volume');
     expect(parsed.confidence).toBeGreaterThanOrEqual(0.7);
     expect(parsed.confidence).toBeLessThanOrEqual(1.0);
   });
 
-  it('returns default SQL when no keywords match', async () => {
+  it('returns default SemanticQuery when no keywords match', async () => {
     const provider = new MockAIProvider();
     const messages: Message[] = [
       { role: 'user', content: 'Tell me something interesting' },
@@ -91,7 +89,7 @@ describe('MockAIProvider', () => {
     const result = await provider.complete(messages);
     const parsed = JSON.parse(result.content);
 
-    expect(parsed.sql).toBe('SELECT * FROM data LIMIT 10');
+    expect(parsed.semanticQuery).toEqual({ metrics: ['mrr'], limit: 10 });
     expect(parsed.confidence).toBeGreaterThanOrEqual(0.5);
     expect(parsed.confidence).toBeLessThan(0.7);
   });
@@ -108,7 +106,7 @@ describe('MockAIProvider', () => {
     const result = await provider.complete(messages);
     const parsed = JSON.parse(result.content);
 
-    expect(parsed.sql).toContain('mrr');
+    expect(parsed.semanticQuery.metrics).toContain('mrr');
     expect(parsed.confidence).toBeGreaterThanOrEqual(0.7);
   });
 

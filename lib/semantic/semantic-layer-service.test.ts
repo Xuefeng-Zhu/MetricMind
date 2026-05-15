@@ -44,12 +44,19 @@ describe("SemanticLayerService", () => {
         id: "entity-1",
         workspace_id: "ws-1",
         data_source_id: "ds-1",
+        model_id: "model-1",
         name: "Customers",
+        slug: "customers",
         description: "Customer accounts",
+        source_table: "demo.customers",
+        primary_key: "id",
         created_at: "2024-01-01T00:00:00Z",
       };
 
-      mockChain.single.mockResolvedValueOnce({ data: mockEntity, error: null });
+      mockChain.single
+        .mockResolvedValueOnce({ data: { name: "customers", type: "demo" }, error: null })
+        .mockResolvedValueOnce({ data: { id: "model-1" }, error: null })
+        .mockResolvedValueOnce({ data: mockEntity, error: null });
 
       const result = await service.createEntity("ws-1", {
         dataSourceId: "ds-1",
@@ -66,12 +73,19 @@ describe("SemanticLayerService", () => {
         id: "entity-2",
         workspace_id: "ws-1",
         data_source_id: "ds-1",
+        model_id: "model-1",
         name: "Orders",
+        slug: "orders",
         description: null,
+        source_table: "demo.orders",
+        primary_key: "id",
         created_at: "2024-01-01T00:00:00Z",
       };
 
-      mockChain.single.mockResolvedValueOnce({ data: mockEntity, error: null });
+      mockChain.single
+        .mockResolvedValueOnce({ data: { name: "orders", type: "demo" }, error: null })
+        .mockResolvedValueOnce({ data: { id: "model-1" }, error: null })
+        .mockResolvedValueOnce({ data: mockEntity, error: null });
 
       const result = await service.createEntity("ws-1", {
         dataSourceId: "ds-1",
@@ -179,7 +193,7 @@ describe("SemanticLayerService", () => {
       });
 
       expect(result).toEqual(mockDimension);
-      expect(insforge.from).toHaveBeenCalledWith("dimensions");
+      expect(insforge.from).toHaveBeenCalledWith("semantic_dimensions");
     });
 
     it("should throw on database error", async () => {
@@ -221,7 +235,7 @@ describe("SemanticLayerService", () => {
       });
 
       expect(result).toEqual(mockMeasure);
-      expect(insforge.from).toHaveBeenCalledWith("measures");
+      expect(insforge.from).toHaveBeenCalledWith("semantic_measures");
     });
 
     it("should throw on database error", async () => {

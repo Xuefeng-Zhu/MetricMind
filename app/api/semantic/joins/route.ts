@@ -57,7 +57,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   try {
     const { data, error } = await insforge
-      .from("join_relationships")
+      .from("semantic_relationships")
       .select(
         "id, workspace_id, source_entity_id, target_entity_id, join_type, source_column, target_column"
       )

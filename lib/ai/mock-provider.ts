@@ -9,70 +9,68 @@ import { AIProvider, CompletionOptions, CompletionResult, Message } from './prov
 
 interface KeywordTemplate {
   keywords: string[];
-  sql: string;
+  semanticQuery: Record<string, unknown>;
   confidence: number;
 }
 
 const KEYWORD_TEMPLATES: KeywordTemplate[] = [
   {
     keywords: ['revenue', 'mrr', 'arr', 'income', 'sales'],
-    sql: "SELECT SUM(mrr_cents)/100 as mrr FROM subscriptions WHERE status = 'active'",
+    semanticQuery: { metrics: ['mrr'] },
     confidence: 0.92,
   },
   {
     keywords: ['customer', 'user', 'account', 'churn'],
-    sql: "SELECT COUNT(*) as customer_count FROM customers WHERE status = 'active'",
+    semanticQuery: { metrics: ['churn_rate'], time: { dimension: 'week', grain: 'week' } },
     confidence: 0.88,
   },
   {
     keywords: ['product', 'event', 'usage', 'feature', 'session'],
-    sql: "SELECT event_name, COUNT(*) as event_count FROM product_events GROUP BY event_name",
+    semanticQuery: { metrics: ['active_users'], dimensions: ['product_area'] },
     confidence: 0.85,
   },
   {
     keywords: ['total', 'sum', 'count', 'average', 'max', 'min'],
-    sql: "SELECT COUNT(*) as total, AVG(amount_cents)/100 as average_amount FROM invoices WHERE status = 'paid'",
+    semanticQuery: { metrics: ['support_ticket_volume'] },
     confidence: 0.80,
   },
 ];
 
-const DEFAULT_SQL = "SELECT * FROM data LIMIT 10";
+const DEFAULT_SEMANTIC_QUERY = { metrics: ['mrr'], limit: 10 };
 const DEFAULT_CONFIDENCE = 0.6;
 
-function buildRevenueSQL(message: string): string {
+function buildRevenueSemanticQuery(message: string): Record<string, unknown> {
   const lowerMessage = message.toLowerCase();
-  const select: string[] = [];
-  const groupBy: string[] = [];
-  const orderBy: string[] = [];
+  const semanticQuery: Record<string, unknown> = { metrics: ['mrr'] };
+  const dimensions: string[] = [];
 
   if (lowerMessage.includes('plan')) {
-    select.push('plan');
-    groupBy.push('plan');
-    orderBy.push('plan');
+    dimensions.push('plan');
   }
 
   if (lowerMessage.includes('month')) {
-    select.push("DATE_TRUNC('month', started_at)::date AS month");
-    groupBy.push('month');
-    orderBy.unshift('month');
+    semanticQuery.time = { dimension: 'month', grain: 'month' };
   }
 
-  select.push('SUM(mrr_cents)/100 AS mrr');
+  if (lowerMessage.includes('week')) {
+    semanticQuery.time = { dimension: 'week', grain: 'week' };
+  }
 
-  const groupClause = groupBy.length > 0 ? ` GROUP BY ${groupBy.join(', ')}` : '';
-  const orderClause = orderBy.length > 0 ? ` ORDER BY ${orderBy.join(', ')}` : '';
+  if (dimensions.length > 0) {
+    semanticQuery.dimensions = dimensions;
+  }
 
-  return `SELECT ${select.join(', ')} FROM subscriptions WHERE status = 'active'${groupClause}${orderClause}`;
+  return semanticQuery;
 }
 
-function buildSQLFromTemplate(template: KeywordTemplate | null, message: string): string {
-  if (!template) return DEFAULT_SQL;
+function buildSemanticQueryFromTemplate(template: KeywordTemplate | null, message: string): Record<string, unknown> {
+  if (!template) return DEFAULT_SEMANTIC_QUERY;
 
   if (template.keywords.includes('mrr') || template.keywords.includes('revenue')) {
-    return buildRevenueSQL(message);
+    return buildRevenueSemanticQuery(message);
   }
 
-  return template.sql;
+  return template.semanticQuery;
 }
 
 /**
@@ -92,13 +90,12 @@ export function detectKeywordTemplate(message: string): KeywordTemplate | null {
 }
 
 /**
- * Generates a mock response content string with SQL and metadata.
+ * Generates a mock response content string with SemanticQuery and metadata.
  */
-function buildMockResponse(sql: string, confidence: number): string {
+function buildMockResponse(semanticQuery: Record<string, unknown>, confidence: number): string {
   return JSON.stringify({
-    sql,
+    semanticQuery,
     confidence,
-    citations: [],
     assumptions: ['Using mock AI provider - no real AI inference performed'],
   });
 }
@@ -130,10 +127,10 @@ export class MockAIProvider implements AIProvider {
     const userMessage = getLastUserMessage(messages);
     const template = detectKeywordTemplate(userMessage);
 
-    const sql = buildSQLFromTemplate(template, userMessage);
+    const semanticQuery = buildSemanticQueryFromTemplate(template, userMessage);
     const confidence = template?.confidence ?? DEFAULT_CONFIDENCE;
 
-    const content = buildMockResponse(sql, confidence);
+    const content = buildMockResponse(semanticQuery, confidence);
 
     // Simulate token usage based on message lengths
     const inputTokens = messages.reduce((sum, m) => sum + Math.ceil(m.content.length / 4), 0);

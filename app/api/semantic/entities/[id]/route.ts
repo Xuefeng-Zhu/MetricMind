@@ -70,8 +70,8 @@ export async function GET(
     }
 
     const { data: dimensions, error: dimensionsError } = await insforge
-      .from("dimensions")
-      .select("id, entity_id, name, description, data_type, source_column")
+      .from("semantic_dimensions")
+      .select("id, entity_id, name, slug, description, data_type, source_column, expression, time_grain, is_pii, required_role")
       .eq("entity_id", params.id);
 
     if (dimensionsError) {
@@ -79,9 +79,9 @@ export async function GET(
     }
 
     const { data: measures, error: measuresError } = await insforge
-      .from("measures")
+      .from("semantic_measures")
       .select(
-        "id, entity_id, name, description, data_type, source_column, default_aggregation"
+        "id, entity_id, name, slug, description, data_type, source_column, expression, default_aggregation"
       )
       .eq("entity_id", params.id);
 

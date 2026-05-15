@@ -21,11 +21,15 @@ export interface DataSourcesResponse {
 export interface EntitiesResponse {
   entities: Array<{
     id: string;
-    workspace_id: string;
-    data_source_id: string;
-    name: string;
-    description: string | null;
-    created_at: string;
+      workspace_id: string;
+      data_source_id: string;
+      model_id?: string | null;
+      name: string;
+      slug?: string;
+      description: string | null;
+      source_table?: string;
+      primary_key?: string;
+      created_at: string;
   }>;
 }
 
@@ -33,17 +37,23 @@ export interface EntitiesResponse {
 export interface MetricsResponse {
   metrics: Array<{
     id: string;
-    workspace_id: string;
-    name: string;
-    description: string | null;
-    formula: string;
+      workspace_id: string;
+      name: string;
+      slug: string;
+      description: string | null;
+      formula: string;
     owner: string;
     certified: boolean;
     certified_date: string | null;
     certified_by: string | null;
-    certified_at: string | null;
-    created_at: string;
-    created_by: string;
+      certified_at: string | null;
+      created_at: string;
+      created_by: string;
+      root_entity_id: string | null;
+      measure_id: string | null;
+      time_dimension_id: string | null;
+      calculation: Record<string, unknown>;
+      filters: Array<Record<string, unknown>>;
   }>;
 }
 
@@ -89,6 +99,7 @@ export interface AskResponse {
   data: {
     summary: string;
     sql: string;
+    semanticQuery?: Record<string, unknown>;
     results: Record<string, unknown>[];
     metrics?: Array<{ label: string; value: string; trend: 'up' | 'down' }>;
     chartData?: Record<string, unknown>[];

@@ -1,24 +1,22 @@
 /**
  * Query Planner implementation.
  *
- * Orchestrates the NL→SQL pipeline:
- * 1. Retrieve semantic context from SemanticLayerService (entities, metrics, glossary terms)
- * 2. Resolve ambiguous terms via glossary (resolveTerms)
- * 3. Generate SQL via AIService.generateSQL
- * 4. Validate SQL via GovernanceEngine.validateSQL
- * 5. If validation fails, return error with governance explanation
- * 6. Execute SQL (with 30-second timeout)
- * 7. Store query_run record in database
- * 8. Return results with all metadata
+ * Orchestrates the NL→SemanticQuery→SQL pipeline:
+ * 1. Load the governed semantic registry
+ * 2. Ask the AI service for SemanticQuery JSON only
+ * 3. Validate and compile the SemanticQuery into SQL
+ * 4. Execute compiled SQL through the read-only RPC
+ * 5. Store query_run metadata and return results with citations
  *
  * Requirements: 7.3, 8.2, 9.1, 9.2, 10.1, 11.1, 11.2, 11.3, 11.4
  */
 
 import { InsForgeDatabaseClient } from '@/lib/insforge/types';
 import { AIProviderConfig } from '../ai/provider';
-import { AIService, AITrace, Citation, createAIService, SemanticContext } from '../ai/ai-service';
-import { createSemanticLayerService, SemanticLayerService } from '../semantic/semantic-layer-service';
-import { createGovernanceEngine, GovernanceEngine, GovernanceContext } from '../governance/governance-engine';
+import { AIService, AITrace, createAIService, SemanticContext } from '../ai/ai-service';
+import { compileSemanticQuery } from '../semantic/semantic-query-compiler';
+import { loadSemanticRegistry } from '../semantic/semantic-loader';
+import type { SemanticCitation, SemanticQuery } from '../semantic/types';
 
 // --- Interfaces ---
 
@@ -26,6 +24,7 @@ export interface QuestionInput {
   question: string;
   workspaceId: string;
   userId: string;
+  userRole?: "viewer" | "analyst" | "admin" | "owner";
   conversationId?: string;
 }
 
@@ -37,11 +36,12 @@ export interface ChartRecommendation {
 
 export interface QueryResult {
   sql: string;
+  semanticQuery: SemanticQuery;
   results: Record<string, unknown>[];
   rowCount: number;
   executionTimeMs: number;
   confidence: number;
-  citations: Citation[];
+  citations: SemanticCitation[];
   assumptions: string[];
   chartRecommendation: ChartRecommendation;
   aiTrace: AITrace;
@@ -84,70 +84,6 @@ export function extractTermsFromQuestion(question: string): string[] {
   }
 
   return Array.from(new Set([...words, ...bigrams]));
-}
-
-/**
- * Build a GovernanceContext from workspace semantic layer data.
- */
-async function buildGovernanceContext(
-  insforge: InsForgeDatabaseClient,
-  workspaceId: string
-): Promise<GovernanceContext> {
-  // Get allowed tables from semantic entities (data source names)
-  const { data: entities } = await insforge
-    .from('semantic_entities')
-    .select('id, name')
-    .eq('workspace_id', workspaceId);
-
-  // Get data source names as allowed tables
-  const { data: dataSources } = await insforge
-    .from('data_sources')
-    .select('name, type')
-    .eq('workspace_id', workspaceId);
-
-  const allowedTables = new Set<string>();
-
-  for (const entity of (entities || []) as { id: string; name: string }[]) {
-    allowedTables.add(entity.name);
-  }
-
-  for (const dataSource of (dataSources || []) as { name: string; type?: string }[]) {
-    allowedTables.add(dataSource.name);
-    if (dataSource.type === 'demo') {
-      allowedTables.add(`demo.${dataSource.name}`);
-    }
-  }
-
-  // Get all columns from dimensions and measures
-  const entityIds = ((entities || []) as { id: string }[]).map((e) => e.id);
-  const allowedColumns = new Set<string>();
-
-  if (entityIds.length > 0) {
-    const { data: dimensions } = await insforge
-      .from('dimensions')
-      .select('source_column, entity_id')
-      .in('entity_id', entityIds);
-
-    const { data: measures } = await insforge
-      .from('measures')
-      .select('source_column, entity_id')
-      .in('entity_id', entityIds);
-
-    for (const dimension of (dimensions || []) as { source_column: string }[]) {
-      allowedColumns.add(dimension.source_column);
-    }
-
-    for (const measure of (measures || []) as { source_column: string }[]) {
-      allowedColumns.add(measure.source_column);
-    }
-  }
-
-  return {
-    workspaceId,
-    allowedTables: Array.from(allowedTables),
-    allowedColumns: Array.from(allowedColumns),
-    denyPatterns: [],
-  };
 }
 
 /**
@@ -223,71 +159,60 @@ export function createQueryPlanner(
   aiConfig?: AIProviderConfig
 ): QueryPlanner {
   const aiService: AIService = createAIService(insforge, aiConfig);
-  const semanticLayerService: SemanticLayerService = createSemanticLayerService(insforge);
-  const governanceEngine: GovernanceEngine = createGovernanceEngine(insforge);
 
   return {
     async processQuestion(input: QuestionInput): Promise<QueryResult> {
-      const { question, workspaceId, userId } = input;
+      const { question, workspaceId } = input;
 
-      // Step 1: Retrieve semantic context (entities, metrics, glossary terms)
-      const [entities, metrics, glossaryTerms] = await Promise.all([
-        semanticLayerService.getEntities(workspaceId),
-        semanticLayerService.getMetrics(workspaceId),
-        semanticLayerService.getGlossaryTerms(workspaceId),
-      ]);
+      const registry = await loadSemanticRegistry(insforge, workspaceId);
 
-      // Step 2: Resolve ambiguous terms via glossary
       const questionTerms = extractTermsFromQuestion(question);
-      const glossaryNames = glossaryTerms.map((t) => t.name.toLowerCase());
+      const glossaryNames = registry.glossaryTerms.map((t) => t.name.toLowerCase());
       const matchingTerms = questionTerms.filter((term) =>
         glossaryNames.some((gName) => gName.includes(term) || term.includes(gName))
       );
 
-      // Get the actual glossary term names that match
-      const termsToResolve = glossaryTerms
+      const resolvedTerms = registry.glossaryTerms
         .filter((t) =>
           matchingTerms.some(
             (mt) => t.name.toLowerCase().includes(mt) || mt.includes(t.name.toLowerCase())
           )
-        )
-        .map((t) => t.name);
+        );
 
-      const resolvedTerms = termsToResolve.length > 0
-        ? await semanticLayerService.resolveTerms(workspaceId, termsToResolve)
-        : [];
-
-      // Build semantic context for AI service
-      // Use certified metric definitions (Requirement 7.3)
       const semanticContext: SemanticContext = {
-        entities: entities.map((e) => ({
-          name: e.name,
-          description: e.description,
+        entities: registry.entities.map((entity) => ({
+          name: entity.name,
+          slug: entity.slug,
+          description: entity.description,
+          dimensions: registry.dimensions
+            .filter((dimension) => dimension.entityId === entity.id && !dimension.isPii)
+            .map((dimension) => dimension.slug),
         })),
-        metrics: metrics
+        metrics: registry.metrics
           .filter((m) => m.certified)
           .map((m) => ({
             name: m.name,
+            slug: m.slug,
             formula: m.formula,
             certified: m.certified,
           })),
         glossaryTerms: [
-          ...glossaryTerms.map((t) => ({
+          ...registry.glossaryTerms.map((t) => ({
             name: t.name,
             definition: t.definition,
           })),
           ...resolvedTerms.map((rt) => ({
-            name: rt.term,
+            name: rt.name,
             definition: rt.definition,
           })),
         ],
       };
 
-      // Also include non-certified metrics but mark them as such
-      const nonCertifiedMetrics = metrics
+      const nonCertifiedMetrics = registry.metrics
         .filter((m) => !m.certified)
         .map((m) => ({
           name: m.name,
+          slug: m.slug,
           formula: m.formula,
           certified: false,
         }));
@@ -296,53 +221,40 @@ export function createQueryPlanner(
         semanticContext.metrics.push(...nonCertifiedMetrics);
       }
 
-      // Step 3: Generate SQL via AI Service
-      const sqlResult = await aiService.generateSQL({
+      const semanticResult = await aiService.generateSemanticQuery({
         question,
         semanticContext,
         workspaceId,
       });
 
-      // If AI service returned an error (empty SQL)
-      if (!sqlResult.sql) {
-        throw new Error('AI service was unable to generate a SQL query. Please try rephrasing your question.');
-      }
-
-      // Step 4: Validate SQL via Governance Engine
-      const governanceContext = await buildGovernanceContext(insforge, workspaceId);
-      const validationResult = await governanceEngine.validateSQL(sqlResult.sql, governanceContext);
-
-      // Step 5: If validation fails, return error with governance explanation
-      if (!validationResult.valid) {
-        const errorMessages = validationResult.errors.map((e) => e.message).join('; ');
-
-        // Store a failed query run record
+      if (!semanticResult.semanticQuery) {
         await storeQueryRun(insforge, {
           workspaceId,
-          sql: sqlResult.sql,
+          sql: '',
           status: 'rejected',
           executionTimeMs: 0,
           rowCount: 0,
-          errorMessage: errorMessages,
+          errorMessage: 'AI service did not return valid SemanticQuery JSON',
         });
 
-        throw new Error(`Query rejected by governance: ${errorMessages}`);
+        throw new Error('AI service did not return valid SemanticQuery JSON. Please try rephrasing your question.');
       }
 
-      // Step 6: Execute SQL (with 30-second timeout)
-      const executionResult = await this.executeSQL(workspaceId, sqlResult.sql);
+      const compiled = compileSemanticQuery(registry, semanticResult.semanticQuery, {
+        userRole: input.userRole ?? "viewer",
+      });
 
-      // Step 7: Store query run record
+      const executionResult = await this.executeSQL(workspaceId, compiled.sql);
+
       await storeQueryRun(insforge, {
         workspaceId,
-        sql: sqlResult.sql,
+        sql: compiled.sql,
         status: 'completed',
         executionTimeMs: executionResult.executionTimeMs,
         rowCount: executionResult.rowCount,
         resultSample: executionResult.rows.slice(0, 10),
       });
 
-      // Step 8: Return results with all metadata
       const chartRecommendation: ChartRecommendation = {
         type: 'table',
         reason: 'Default table view',
@@ -350,15 +262,16 @@ export function createQueryPlanner(
       };
 
       return {
-        sql: sqlResult.sql,
+        sql: compiled.sql,
+        semanticQuery: semanticResult.semanticQuery,
         results: executionResult.rows,
         rowCount: executionResult.rowCount,
         executionTimeMs: executionResult.executionTimeMs,
-        confidence: sqlResult.confidence,
-        citations: sqlResult.citations,
-        assumptions: sqlResult.assumptions,
+        confidence: semanticResult.confidence,
+        citations: compiled.citations,
+        assumptions: [...semanticResult.assumptions, ...compiled.assumptions],
         chartRecommendation,
-        aiTrace: sqlResult.trace,
+        aiTrace: semanticResult.trace,
       };
     },
 
@@ -369,7 +282,7 @@ export function createQueryPlanner(
         // Execute with 30-second timeout using statement_timeout
         const timeoutSQL = `SET LOCAL statement_timeout = '${QUERY_TIMEOUT_MS}ms'; ${sql}`;
 
-        // Use InsForge's rpc to execute raw SQL
+        // Execute compiler-generated SELECT SQL through the read-only RPC guard.
         // We use a custom RPC function or fall back to direct query
         const { data, error } = await Promise.race([
           insforge.rpc('execute_readonly_query', {
@@ -421,7 +334,7 @@ export function createQueryPlanner(
         await storeQueryRun(insforge, {
           workspaceId,
           sql,
-          status: 'error',
+          status: 'failed',
           executionTimeMs,
           rowCount: 0,
           errorMessage: sanitizeErrorMessage(err),
@@ -439,7 +352,7 @@ export function createQueryPlanner(
 interface QueryRunInput {
   workspaceId: string;
   sql: string;
-  status: 'completed' | 'error' | 'timeout' | 'rejected';
+  status: 'completed' | 'failed' | 'timeout' | 'rejected';
   executionTimeMs: number;
   rowCount: number;
   resultSample?: Record<string, unknown>[];

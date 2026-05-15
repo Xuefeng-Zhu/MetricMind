@@ -18,6 +18,7 @@ interface Metric {
   id: string;
   workspace_id: string;
   name: string;
+  slug: string;
   description: string | null;
   formula: string;
   certified: boolean;
@@ -25,6 +26,11 @@ interface Metric {
   certified_at: string | null;
   created_at: string;
   created_by: string;
+  root_entity_id: string | null;
+  measure_id: string | null;
+  time_dimension_id: string | null;
+  calculation: Record<string, unknown>;
+  filters: Array<Record<string, unknown>>;
 }
 
 export default function MetricsPage() {
@@ -38,6 +44,11 @@ export default function MetricsPage() {
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newFormula, setNewFormula] = useState("");
+  const [newRootEntityId, setNewRootEntityId] = useState("");
+  const [newMeasureId, setNewMeasureId] = useState("");
+  const [newTimeDimensionId, setNewTimeDimensionId] = useState("");
+  const [newCalculationJson, setNewCalculationJson] = useState('{"type":"measure","measure":"subscription_mrr","aggregation":"sum"}');
+  const [newFiltersJson, setNewFiltersJson] = useState("[]");
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -87,6 +98,19 @@ export default function MetricsPage() {
       return;
     }
 
+    let calculation: Record<string, unknown>;
+    let filters: Array<Record<string, unknown>>;
+    try {
+      calculation = JSON.parse(newCalculationJson);
+      filters = JSON.parse(newFiltersJson);
+      if (!Array.isArray(filters)) {
+        throw new Error("Filters must be an array.");
+      }
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Calculation and filters must be valid JSON.");
+      return;
+    }
+
     setIsCreating(true);
     setCreateError(null);
 
@@ -101,6 +125,11 @@ export default function MetricsPage() {
           name: newName.trim(),
           description: newDescription.trim() || undefined,
           formula: newFormula.trim(),
+          rootEntityId: newRootEntityId.trim() || undefined,
+          measureId: newMeasureId.trim() || undefined,
+          timeDimensionId: newTimeDimensionId.trim() || undefined,
+          calculation,
+          filters,
         }),
       });
 
@@ -114,6 +143,11 @@ export default function MetricsPage() {
       setNewName("");
       setNewDescription("");
       setNewFormula("");
+      setNewRootEntityId("");
+      setNewMeasureId("");
+      setNewTimeDimensionId("");
+      setNewCalculationJson('{"type":"measure","measure":"subscription_mrr","aggregation":"sum"}');
+      setNewFiltersJson("[]");
       setShowCreateForm(false);
     } catch (err) {
       setCreateError(
@@ -195,6 +229,53 @@ export default function MetricsPage() {
                   value={newFormula}
                   onChange={(e) => setNewFormula(e.target.value)}
                   placeholder="e.g., SUM(subscription_amount) WHERE status = 'active'"
+                />
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="metric-root-entity">Root Entity ID</Label>
+                  <Input
+                    id="metric-root-entity"
+                    value={newRootEntityId}
+                    onChange={(e) => setNewRootEntityId(e.target.value)}
+                    placeholder="semantic entity id"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="metric-measure">Measure ID</Label>
+                  <Input
+                    id="metric-measure"
+                    value={newMeasureId}
+                    onChange={(e) => setNewMeasureId(e.target.value)}
+                    placeholder="semantic measure id"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="metric-time-dimension">Time Dimension ID</Label>
+                  <Input
+                    id="metric-time-dimension"
+                    value={newTimeDimensionId}
+                    onChange={(e) => setNewTimeDimensionId(e.target.value)}
+                    placeholder="semantic dimension id"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="metric-calculation">Calculation JSON</Label>
+                <textarea
+                  id="metric-calculation"
+                  value={newCalculationJson}
+                  onChange={(e) => setNewCalculationJson(e.target.value)}
+                  className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="metric-filters">Metric Filters JSON</Label>
+                <textarea
+                  id="metric-filters"
+                  value={newFiltersJson}
+                  onChange={(e) => setNewFiltersJson(e.target.value)}
+                  className="min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
                 />
               </div>
               {createError && (

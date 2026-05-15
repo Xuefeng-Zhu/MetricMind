@@ -64,6 +64,10 @@ export async function POST(
     description?: string;
     dataType?: string;
     sourceColumn?: string;
+    expression?: string;
+    timeGrain?: "day" | "week" | "month" | "quarter" | "year";
+    isPii?: boolean;
+    requiredRole?: "viewer" | "analyst" | "admin" | "owner";
   };
   try {
     body = await request.json();
@@ -102,6 +106,10 @@ export async function POST(
       description: body.description,
       dataType: body.dataType as "text" | "integer" | "float" | "boolean" | "date" | "timestamp",
       sourceColumn: body.sourceColumn,
+      expression: body.expression,
+      timeGrain: body.timeGrain,
+      isPii: body.isPii,
+      requiredRole: body.requiredRole,
     });
     return NextResponse.json({ dimension }, { status: 201 });
   } catch (error) {
