@@ -39,6 +39,42 @@ const KEYWORD_TEMPLATES: KeywordTemplate[] = [
 const DEFAULT_SQL = "SELECT * FROM data LIMIT 10";
 const DEFAULT_CONFIDENCE = 0.6;
 
+function buildRevenueSQL(message: string): string {
+  const lowerMessage = message.toLowerCase();
+  const select: string[] = [];
+  const groupBy: string[] = [];
+  const orderBy: string[] = [];
+
+  if (lowerMessage.includes('plan')) {
+    select.push('plan');
+    groupBy.push('plan');
+    orderBy.push('plan');
+  }
+
+  if (lowerMessage.includes('month')) {
+    select.push("DATE_TRUNC('month', started_at)::date AS month");
+    groupBy.push('month');
+    orderBy.unshift('month');
+  }
+
+  select.push('SUM(mrr_cents)/100 AS mrr');
+
+  const groupClause = groupBy.length > 0 ? ` GROUP BY ${groupBy.join(', ')}` : '';
+  const orderClause = orderBy.length > 0 ? ` ORDER BY ${orderBy.join(', ')}` : '';
+
+  return `SELECT ${select.join(', ')} FROM subscriptions WHERE status = 'active'${groupClause}${orderClause}`;
+}
+
+function buildSQLFromTemplate(template: KeywordTemplate | null, message: string): string {
+  if (!template) return DEFAULT_SQL;
+
+  if (template.keywords.includes('mrr') || template.keywords.includes('revenue')) {
+    return buildRevenueSQL(message);
+  }
+
+  return template.sql;
+}
+
 /**
  * Detects which keyword template matches the user message.
  * Returns the first matching template or null if no match.
@@ -94,7 +130,7 @@ export class MockAIProvider implements AIProvider {
     const userMessage = getLastUserMessage(messages);
     const template = detectKeywordTemplate(userMessage);
 
-    const sql = template?.sql ?? DEFAULT_SQL;
+    const sql = buildSQLFromTemplate(template, userMessage);
     const confidence = template?.confidence ?? DEFAULT_CONFIDENCE;
 
     const content = buildMockResponse(sql, confidence);

@@ -96,46 +96,56 @@ async function buildGovernanceContext(
   // Get allowed tables from semantic entities (data source names)
   const { data: entities } = await insforge
     .from('semantic_entities')
-    .select('name')
+    .select('id, name')
     .eq('workspace_id', workspaceId);
 
   // Get data source names as allowed tables
   const { data: dataSources } = await insforge
     .from('data_sources')
-    .select('name')
+    .select('name, type')
     .eq('workspace_id', workspaceId);
 
-  const allowedTables = [
-    ...(entities || []).map((e: { name: string }) => e.name),
-    ...(dataSources || []).map((ds: { name: string }) => ds.name),
-  ];
+  const allowedTables = new Set<string>();
+
+  for (const entity of (entities || []) as { id: string; name: string }[]) {
+    allowedTables.add(entity.name);
+  }
+
+  for (const dataSource of (dataSources || []) as { name: string; type?: string }[]) {
+    allowedTables.add(dataSource.name);
+    if (dataSource.type === 'demo') {
+      allowedTables.add(`demo.${dataSource.name}`);
+    }
+  }
 
   // Get all columns from dimensions and measures
-  const { data: dimensions } = await insforge
-    .from('dimensions')
-    .select('source_column, entity_id')
-    .in(
-      'entity_id',
-      (entities || []).map((e: { name: string }) => e.name)
-    );
+  const entityIds = ((entities || []) as { id: string }[]).map((e) => e.id);
+  const allowedColumns = new Set<string>();
 
-  const { data: measures } = await insforge
-    .from('measures')
-    .select('source_column, entity_id')
-    .in(
-      'entity_id',
-      (entities || []).map((e: { name: string }) => e.name)
-    );
+  if (entityIds.length > 0) {
+    const { data: dimensions } = await insforge
+      .from('dimensions')
+      .select('source_column, entity_id')
+      .in('entity_id', entityIds);
 
-  const allowedColumns = [
-    ...(dimensions || []).map((d: { source_column: string }) => d.source_column),
-    ...(measures || []).map((m: { source_column: string }) => m.source_column),
-  ];
+    const { data: measures } = await insforge
+      .from('measures')
+      .select('source_column, entity_id')
+      .in('entity_id', entityIds);
+
+    for (const dimension of (dimensions || []) as { source_column: string }[]) {
+      allowedColumns.add(dimension.source_column);
+    }
+
+    for (const measure of (measures || []) as { source_column: string }[]) {
+      allowedColumns.add(measure.source_column);
+    }
+  }
 
   return {
     workspaceId,
-    allowedTables,
-    allowedColumns,
+    allowedTables: Array.from(allowedTables),
+    allowedColumns: Array.from(allowedColumns),
     denyPatterns: [],
   };
 }

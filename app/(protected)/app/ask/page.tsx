@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useApiQuery } from "@/hooks/use-api-query";
 import { useApiMutation } from "@/hooks/use-api-mutation";
 import type { ConversationsResponse, MessagesResponse, AskResponse } from "@/types/api-responses";
@@ -29,6 +29,10 @@ function formatRelativeTime(dateString: string): string {
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
   return date.toLocaleDateString();
+}
+
+function formatConfidence(confidence: number): string {
+  return `${Math.round(confidence * 100)}%`;
 }
 
 export default function AskPage() {
@@ -86,6 +90,34 @@ export default function AskPage() {
 
   const conversations = conversationsData?.conversations ?? [];
   const answer = lastAnswer?.data ?? null;
+
+  useEffect(() => {
+    function setQuestionFromLocation() {
+      const queryQuestion = new URLSearchParams(window.location.search).get("q");
+      if (!queryQuestion) return;
+
+      setQuestion(queryQuestion);
+      setActiveConversation(null);
+    }
+
+    function handleExternalQuery(event: Event) {
+      const customEvent = event as CustomEvent<{ question?: string }>;
+      const nextQuestion = customEvent.detail?.question;
+      if (!nextQuestion) return;
+
+      setQuestion(nextQuestion);
+      setActiveConversation(null);
+    }
+
+    setQuestionFromLocation();
+    window.addEventListener("popstate", setQuestionFromLocation);
+    window.addEventListener("metricmind:ask-query", handleExternalQuery);
+
+    return () => {
+      window.removeEventListener("popstate", setQuestionFromLocation);
+      window.removeEventListener("metricmind:ask-query", handleExternalQuery);
+    };
+  }, []);
 
   return (
     <div className="flex h-[calc(100vh-theme(spacing.16)-theme(spacing.12))]">
@@ -196,7 +228,7 @@ export default function AskPage() {
                     Answer
                   </h1>
                   <Badge variant="success" className="shrink-0 whitespace-nowrap">
-                    {answer.confidence}% confidence
+                    {formatConfidence(answer.confidence)} confidence
                   </Badge>
                 </div>
               )}

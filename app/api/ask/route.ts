@@ -12,7 +12,58 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withRBAC, RBACContext } from '@/lib/rbac/rbac-middleware';
 import { createClient } from '@/lib/insforge/server';
-import { createQueryPlanner } from '@/lib/query/query-planner';
+import { createQueryPlanner, type QueryResult } from '@/lib/query/query-planner';
+
+function formatValue(value: unknown): string {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? value.toLocaleString() : value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  }
+
+  if (value === null || value === undefined || value === '') {
+    return 'no value';
+  }
+
+  return String(value);
+}
+
+function buildSummary(question: string, result: QueryResult): string {
+  if (result.rowCount === 0) {
+    return `No rows matched "${question}".`;
+  }
+
+  const firstRow = result.results[0] ?? {};
+  const entries = Object.entries(firstRow);
+
+  if (result.rowCount === 1 && entries.length === 1) {
+    const [key, value] = entries[0];
+    return `${key.replace(/_/g, ' ')} is ${formatValue(value)}.`;
+  }
+
+  const columns = entries.map(([key]) => key.replace(/_/g, ' ')).join(', ');
+  return `Query returned ${result.rowCount.toLocaleString()} rows with ${columns}.`;
+}
+
+function buildChartData(results: Record<string, unknown>[]): Record<string, unknown>[] | undefined {
+  if (results.length === 0) return undefined;
+
+  const keys = Object.keys(results[0]);
+  const numericKeys = keys.filter((key) => typeof results[0][key] === 'number');
+  const dimensionKey = keys.find((key) => !numericKeys.includes(key));
+
+  if (!dimensionKey || numericKeys.length === 0) return undefined;
+
+  return results.map((row) => {
+    const chartRow: Record<string, unknown> = {
+      [dimensionKey]: row[dimensionKey],
+    };
+
+    for (const key of numericKeys) {
+      chartRow[key] = row[key];
+    }
+
+    return chartRow;
+  });
+}
 
 async function handler(req: NextRequest, context: RBACContext): Promise<NextResponse> {
   const { userId, workspaceId } = context;
@@ -89,7 +140,12 @@ async function handler(req: NextRequest, context: RBACContext): Promise<NextResp
 
     return NextResponse.json({
       success: true,
-      data: result,
+      data: {
+        ...result,
+        summary: buildSummary(question.trim(), result),
+        chartData: buildChartData(result.results),
+        confidence: result.confidence,
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'An unexpected error occurred';
