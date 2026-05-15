@@ -11,10 +11,10 @@ import {
   LayoutDashboard,
   Lightbulb,
   Shield,
-  ChevronDown,
   Settings,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { WorkspaceSwitcher } from "./workspace-switcher";
 
 interface NavItem {
   label: string;
@@ -57,13 +57,7 @@ export function AppSidebar() {
 
       {/* Workspace Switcher */}
       <div className="px-4 mb-4">
-        <button
-          type="button"
-          className="w-full flex items-center justify-between px-3 py-2 rounded-md text-sm text-gray-300 hover:bg-white/5 transition-colors"
-        >
-          <span>Acme Corp</span>
-          <ChevronDown className="w-4 h-4" />
-        </button>
+        <WorkspaceSwitcher />
       </div>
 
       {/* Navigation */}

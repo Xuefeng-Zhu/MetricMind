@@ -5,5 +5,6 @@ export function createClient() {
   return createCompatClient({
     baseUrl: getInsForgeUrl(),
     anonKey: getInsForgeAnonKey(),
+    isServerMode: true,
   });
 }

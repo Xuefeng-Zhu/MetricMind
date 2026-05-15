@@ -11,6 +11,14 @@ vi.mock("@/lib/workspaces/workspace-service", () => ({
   createWorkspaceService: vi.fn(),
 }));
 
+const mockEnsureProfile = vi.hoisted(() =>
+  vi.fn().mockResolvedValue({ id: "profile-1" })
+);
+
+vi.mock("@/lib/auth/ensure-profile", () => ({
+  ensureProfile: mockEnsureProfile,
+}));
+
 import { createClient } from "@/lib/insforge/server";
 import { createWorkspaceService } from "@/lib/workspaces/workspace-service";
 import { GET, POST } from "./route";
@@ -32,6 +40,7 @@ function createMockInsForge(user: { id: string } | null = null) {
 describe("GET /api/workspaces", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockEnsureProfile.mockResolvedValue({ id: "profile-1" });
   });
 
   it("returns 401 when user is not authenticated", async () => {
@@ -51,8 +60,9 @@ describe("GET /api/workspaces", () => {
     ];
 
     mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
+    const getByUser = vi.fn().mockResolvedValue(mockWorkspaces);
     mockCreateWorkspaceService.mockReturnValue({
-      getByUser: vi.fn().mockResolvedValue(mockWorkspaces),
+      getByUser,
     });
 
     const response = await GET();
@@ -60,12 +70,14 @@ describe("GET /api/workspaces", () => {
 
     expect(response.status).toBe(200);
     expect(body.workspaces).toEqual(mockWorkspaces);
+    expect(getByUser).toHaveBeenCalledWith("profile-1");
   });
 
   it("returns empty array when user has no workspaces", async () => {
     mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
+    const getByUser = vi.fn().mockResolvedValue([]);
     mockCreateWorkspaceService.mockReturnValue({
-      getByUser: vi.fn().mockResolvedValue([]),
+      getByUser,
     });
 
     const response = await GET();
@@ -73,6 +85,7 @@ describe("GET /api/workspaces", () => {
 
     expect(response.status).toBe(200);
     expect(body.workspaces).toEqual([]);
+    expect(getByUser).toHaveBeenCalledWith("profile-1");
   });
 
   it("returns 500 when service throws an error", async () => {
@@ -163,6 +176,7 @@ describe("POST /api/workspaces", () => {
       name: "New Workspace",
       created_at: "2024-01-01",
       owner_id: "user-1",
+      role: "owner",
     };
 
     mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));
@@ -200,7 +214,7 @@ describe("POST /api/workspaces", () => {
 
     await POST(request);
 
-    expect(mockCreate).toHaveBeenCalledWith("Trimmed", "user-1");
+    expect(mockCreate).toHaveBeenCalledWith("Trimmed", "profile-1");
   });
 
   it("returns 500 when service throws an error", async () => {

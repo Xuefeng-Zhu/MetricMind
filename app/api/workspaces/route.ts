@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ensureProfile } from "@/lib/auth/ensure-profile";
 import { createClient } from "@/lib/insforge/server";
 import { createWorkspaceService } from "@/lib/workspaces/workspace-service";
 
@@ -22,8 +23,9 @@ export async function GET(): Promise<NextResponse> {
   }
 
   try {
+    const profile = await ensureProfile(insforge, user);
     const workspaceService = createWorkspaceService(insforge);
-    const workspaces = await workspaceService.getByUser(user.id);
+    const workspaces = await workspaceService.getByUser(profile.id);
     return NextResponse.json({ workspaces });
   } catch (error) {
     const message =
@@ -73,8 +75,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
+    const profile = await ensureProfile(insforge, user);
     const workspaceService = createWorkspaceService(insforge);
-    const workspace = await workspaceService.create(name.trim(), user.id);
+    const workspace = await workspaceService.create(name.trim(), profile.id);
     return NextResponse.json({ workspace }, { status: 201 });
   } catch (error) {
     const message =

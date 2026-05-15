@@ -16,14 +16,26 @@ const mockCreateClient = createClient as ReturnType<typeof vi.fn>;
 function createMockInsForge(overrides: {
   getUser?: any;
   workspaceMemberQuery?: any;
+  profileQuery?: any;
 } = {}) {
-  const mockSingle = vi.fn().mockResolvedValue(
+  function createBuilder(result: any) {
+    const builder: any = {
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue(result),
+    };
+    return builder;
+  }
+
+  const profileBuilder = createBuilder(
+    overrides.profileQuery ?? { data: null, error: null }
+  );
+  const workspaceMemberBuilder = createBuilder(
     overrides.workspaceMemberQuery ?? { data: null, error: null }
   );
-  const mockEq2 = vi.fn().mockReturnValue({ single: mockSingle });
-  const mockEq1 = vi.fn().mockReturnValue({ eq: mockEq2 });
-  const mockSelect = vi.fn().mockReturnValue({ eq: mockEq1 });
-  const mockFrom = vi.fn().mockReturnValue({ select: mockSelect });
+  const mockFrom = vi.fn((table: string) =>
+    table === "profiles" ? profileBuilder : workspaceMemberBuilder
+  );
 
   return {
     auth: {

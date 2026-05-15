@@ -33,20 +33,42 @@ export function hasPermission(userRole: Role, requiredRole: Role): boolean {
   return ROLE_HIERARCHY[userRole] >= ROLE_HIERARCHY[requiredRole];
 }
 
+export async function resolveProfileId(
+  insforge: InsForgeDatabaseClient,
+  authUserId: string
+): Promise<string> {
+  try {
+    const query = insforge
+      .from("profiles")
+      .select("id")
+      .eq("auth_user_id", authUserId);
+
+    if (typeof query.single !== "function") {
+      return authUserId;
+    }
+
+    const { data: profile } = await query.single();
+    return profile?.id ?? authUserId;
+  } catch {
+    return authUserId;
+  }
+}
+
 /**
  * Resolves the user's role within a specific workspace by querying workspace_members.
  * Returns null if the user is not a member of the workspace.
  */
 export async function resolveWorkspaceRole(
   insforge: InsForgeDatabaseClient,
-  userId: string,
+  authUserId: string,
   workspaceId: string
 ): Promise<Role | null> {
+  const profileId = await resolveProfileId(insforge, authUserId);
   const { data, error } = await insforge
     .from("workspace_members")
     .select("role")
     .eq("workspace_id", workspaceId)
-    .eq("user_id", userId)
+    .eq("user_id", profileId)
     .single();
 
   if (error || !data) {
@@ -118,6 +140,7 @@ export function withRBAC(
     }
 
     // 3. Resolve the user's role in that workspace
+    const profileId = await resolveProfileId(insforge, user.id);
     const role = await resolveWorkspaceRole(insforge, user.id, workspaceId);
     if (!role) {
       return NextResponse.json(
@@ -142,7 +165,7 @@ export function withRBAC(
 
     // 5. Call the handler with the RBACContext
     const context: RBACContext = {
-      userId: user.id,
+      userId: profileId,
       workspaceId,
       role,
     };

@@ -89,7 +89,7 @@ export default function EntityDetailPage() {
     setError(null);
 
     try {
-      const response = await fetch(`/api/semantic-layer/entities/${id}`, {
+      const response = await fetch(`/api/semantic/entities/${id}`, {
         headers: {
           "x-workspace-id": workspaceContext.workspaceId,
         },
@@ -128,7 +128,7 @@ export default function EntityDetailPage() {
     setDimError(null);
 
     try {
-      const response = await fetch(`/api/semantic-layer/entities/${id}/dimensions`, {
+      const response = await fetch(`/api/semantic/entities/${id}/dimensions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -180,7 +180,7 @@ export default function EntityDetailPage() {
     setMeasureError(null);
 
     try {
-      const response = await fetch(`/api/semantic-layer/entities/${id}/measures`, {
+      const response = await fetch(`/api/semantic/entities/${id}/measures`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

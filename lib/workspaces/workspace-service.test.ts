@@ -65,7 +65,7 @@ describe("WorkspaceService", () => {
       const service = createWorkspaceService(insforge);
       const result = await service.create("My Workspace", "user-1");
 
-      expect(result).toEqual(mockWorkspace);
+      expect(result).toEqual({ ...mockWorkspace, role: "owner" });
       expect(insforge.from).toHaveBeenCalledWith("workspaces");
       expect(workspacesBuilder.insert).toHaveBeenCalledWith({
         name: "My Workspace",
@@ -144,7 +144,10 @@ describe("WorkspaceService", () => {
       const membersBuilder: any = {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockResolvedValue({
-          data: [{ workspace_id: "ws-1" }, { workspace_id: "ws-2" }],
+          data: [
+            { workspace_id: "ws-1", role: "owner" },
+            { workspace_id: "ws-2", role: "analyst" },
+          ],
           error: null,
         }),
       };
@@ -164,7 +167,10 @@ describe("WorkspaceService", () => {
       const service = createWorkspaceService(insforge);
       const result = await service.getByUser("user-1");
 
-      expect(result).toEqual(mockWorkspaces);
+      expect(result).toEqual([
+        { ...mockWorkspaces[0], role: "owner" },
+        { ...mockWorkspaces[1], role: "analyst" },
+      ]);
       expect(membersBuilder.eq).toHaveBeenCalledWith("user_id", "user-1");
       expect(workspacesBuilder.in).toHaveBeenCalledWith("id", ["ws-1", "ws-2"]);
     });
