@@ -35,21 +35,30 @@ interface TableRow {
 export default function ExplorePage() {
   const [vizType, setVizType] = useState<VizType>('bar');
   const [sqlExpanded, setSqlExpanded] = useState(false);
-  const [selectedMetric] = useState('MRR');
+  const [selectedMetric, setSelectedMetric] = useState('MRR');
   const [selectedDimensions, setSelectedDimensions] = useState<string[]>(['Plan', 'Month']);
-  const [filters] = useState<Record<string, string>>({});
+  const [dateRange, setDateRange] = useState('Last 12 months');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [filterField, setFilterField] = useState('Plan');
+  const [filterValue, setFilterValue] = useState('');
   const [result, setResult] = useState<AskResponse | null>(null);
 
   const { mutate, isLoading, error } = useApiMutation<ExploreQuery, AskResponse>('/api/ask', 'POST');
 
   const handleRunQuery = async () => {
     setResult(null);
+    const filters =
+      filterOpen && filterValue.trim()
+        ? { [filterField]: filterValue.trim() }
+        : undefined;
 
     const query: ExploreQuery = {
-      question: `Show ${selectedMetric} by ${selectedDimensions.join(', ')}`,
+      question: `Show ${selectedMetric} by ${selectedDimensions.join(', ')} for ${dateRange}${
+        filters ? ` where ${filterField} is ${filterValue.trim()}` : ''
+      }`,
       metric: selectedMetric,
       dimensions: selectedDimensions,
-      filters: Object.keys(filters).length > 0 ? filters : undefined,
+      filters,
     };
 
     const response = await mutate(query);
@@ -89,6 +98,8 @@ export default function ExplorePage() {
     { type: 'area', icon: <TrendingUp className="h-4 w-4" />, label: 'Area chart' },
     { type: 'table', icon: <Table className="h-4 w-4" />, label: 'Table view' },
   ];
+  const metricOptions = ['MRR', 'ARR', 'Churn Rate', 'Active Users'];
+  const dateRangeOptions = ['Last 30 days', 'Last 90 days', 'Last 12 months', 'Year to date'];
 
   return (
     <div className="flex h-[calc(100vh-4rem)] -m-6">
@@ -100,10 +111,18 @@ export default function ExplorePage() {
           <label className="block text-xs font-medium text-[#4B5563] uppercase tracking-wider mb-2">
             Metric
           </label>
-          <div className="flex items-center justify-between border border-[#E5E7EB] rounded-lg px-3 py-2 bg-white cursor-pointer hover:border-[#2563EB] transition-colors">
-            <span className="text-sm font-medium text-[#111827]">{selectedMetric}</span>
-            <ChevronDown className="h-4 w-4 text-[#4B5563]" />
-          </div>
+          <select
+            value={selectedMetric}
+            onChange={(event) => setSelectedMetric(event.target.value)}
+            className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-sm font-medium text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+            aria-label="Select metric"
+          >
+            {metricOptions.map((metric) => (
+              <option key={metric} value={metric}>
+                {metric}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Dimensions */}
@@ -138,10 +157,18 @@ export default function ExplorePage() {
           <label className="block text-xs font-medium text-[#4B5563] uppercase tracking-wider mb-2">
             Date Range
           </label>
-          <div className="flex items-center justify-between border border-[#E5E7EB] rounded-lg px-3 py-2 bg-white">
-            <span className="text-sm text-[#111827]">Last 12 months</span>
-            <ChevronDown className="h-4 w-4 text-[#4B5563]" />
-          </div>
+          <select
+            value={dateRange}
+            onChange={(event) => setDateRange(event.target.value)}
+            className="h-10 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#2563EB]"
+            aria-label="Select date range"
+          >
+            {dateRangeOptions.map((range) => (
+              <option key={range} value={range}>
+                {range}
+              </option>
+            ))}
+          </select>
         </div>
 
         {/* Filters */}
@@ -149,10 +176,47 @@ export default function ExplorePage() {
           <label className="block text-xs font-medium text-[#4B5563] uppercase tracking-wider mb-2">
             Filters
           </label>
-          <button className="flex items-center gap-1.5 text-sm text-[#2563EB] hover:text-[#1d4ed8] transition-colors">
+          <button
+            type="button"
+            onClick={() => setFilterOpen((open) => !open)}
+            className="flex items-center gap-1.5 text-sm text-[#2563EB] hover:text-[#1d4ed8] transition-colors"
+            aria-expanded={filterOpen}
+          >
             <Plus className="h-3.5 w-3.5" />
-            Add Filter
+            {filterOpen ? 'Hide Filter' : 'Add Filter'}
           </button>
+          {filterOpen && (
+            <div className="mt-3 space-y-2 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] p-3">
+              <select
+                value={filterField}
+                onChange={(event) => setFilterField(event.target.value)}
+                className="h-9 w-full rounded-md border border-[#E5E7EB] bg-white px-2 text-sm text-[#111827]"
+                aria-label="Select filter field"
+              >
+                <option value="Plan">Plan</option>
+                <option value="Region">Region</option>
+                <option value="Segment">Segment</option>
+              </select>
+              <input
+                value={filterValue}
+                onChange={(event) => setFilterValue(event.target.value)}
+                className="h-9 w-full rounded-md border border-[#E5E7EB] bg-white px-2 text-sm text-[#111827]"
+                placeholder="Filter value"
+                aria-label="Filter value"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setFilterOpen(false);
+                  setFilterValue('');
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Visualization Type */}

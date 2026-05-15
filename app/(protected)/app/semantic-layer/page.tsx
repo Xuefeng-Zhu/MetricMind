@@ -210,7 +210,12 @@ export default function SemanticLayerPage() {
         <EmptyState
           title="No entities defined"
           description="Define entities to build your semantic model. Entities represent the core business objects in your data."
-          action={{ label: 'Define Entity', onClick: () => {} }}
+          action={{
+            label: 'Define Entity',
+            onClick: () => {
+              window.location.href = '/app/semantic-layer/entities';
+            },
+          }}
         />
       </div>
     );

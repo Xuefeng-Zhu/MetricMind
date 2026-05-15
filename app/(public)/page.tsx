@@ -7,6 +7,8 @@ import {
   LayoutDashboard,
   BarChart3,
   Activity,
+  CheckCircle2,
+  BookOpen,
 } from "lucide-react";
 
 function Navigation() {
@@ -74,7 +76,7 @@ function HeroSection() {
             <Link href="/signup">Get Started</Link>
           </Button>
           <Button asChild variant="outline" size="lg">
-            <Link href="/login">Watch Demo</Link>
+            <Link href="/demo">Watch Demo</Link>
           </Button>
         </div>
       </div>
@@ -156,6 +158,103 @@ function StatsSection() {
               <p className="mt-1 text-sm text-gray-600">{stat.label}</p>
             </div>
           ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const pricingPlans = [
+  {
+    name: "Starter",
+    price: "Free",
+    description: "For trying MetricMind with a small team.",
+    points: ["Demo workspace", "CSV uploads", "Governed answers"],
+  },
+  {
+    name: "Team",
+    price: "$49",
+    description: "For teams connecting shared data sources.",
+    points: ["Shared dashboards", "Metric certification", "Audit logs"],
+  },
+  {
+    name: "Enterprise",
+    price: "Custom",
+    description: "For governed analytics across departments.",
+    points: ["Workspace roles", "AI provider controls", "Priority support"],
+  },
+];
+
+function PricingSection() {
+  return (
+    <section id="pricing" className="px-6 py-16 md:py-24">
+      <div className="mx-auto max-w-7xl">
+        <h2 className="mb-12 text-center text-3xl font-bold tracking-tight">
+          Pricing
+        </h2>
+        <div className="grid gap-6 md:grid-cols-3">
+          {pricingPlans.map((plan) => (
+            <div key={plan.name} className="rounded-xl border bg-white p-6 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">{plan.name}</h3>
+                  <p className="mt-1 text-sm text-gray-600">{plan.description}</p>
+                </div>
+                <p className="text-xl font-bold text-gray-900">{plan.price}</p>
+              </div>
+              <ul className="mt-6 space-y-3">
+                {plan.points.map((point) => (
+                  <li key={point} className="flex items-center gap-2 text-sm text-gray-700">
+                    <CheckCircle2 className="h-4 w-4 text-blue-600" />
+                    {point}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const docsLinks = [
+  "Connect data sources",
+  "Define semantic entities",
+  "Certify metrics",
+  "Review audit trails",
+];
+
+function DocsSection() {
+  return (
+    <section id="docs" className="px-6 py-16 md:py-24">
+      <div className="mx-auto max-w-7xl">
+        <div className="rounded-xl border bg-white p-8 shadow-sm">
+          <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+            <div className="max-w-2xl">
+              <div className="mb-3 flex items-center gap-2 text-sm font-medium text-blue-600">
+                <BookOpen className="h-4 w-4" />
+                Docs
+              </div>
+              <h2 className="text-3xl font-bold tracking-tight text-gray-900">
+                Build a governed analytics workspace
+              </h2>
+              <p className="mt-3 text-gray-600">
+                Follow the setup path inside the app: connect data, model it,
+                certify metrics, and ask questions with traceable answers.
+              </p>
+            </div>
+            <Button asChild size="lg">
+              <Link href="/signup">Start Setup</Link>
+            </Button>
+          </div>
+          <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {docsLinks.map((label) => (
+              <div key={label} className="rounded-lg border bg-gray-50 px-4 py-3 text-sm font-medium text-gray-700">
+                {label}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>
@@ -298,6 +397,8 @@ export default function LandingPage() {
         <HeroSection />
         <FeatureCards />
         <StatsSection />
+        <PricingSection />
+        <DocsSection />
         <ProductPreview />
       </main>
       <Footer />
