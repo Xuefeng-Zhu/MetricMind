@@ -472,6 +472,7 @@ export function createSemanticLayerService(
     // --- Metrics ---
 
     async createMetric(workspaceId: string, input: CreateMetricInput): Promise<Metric> {
+      const calculation = resolveCreateMetricCalculation(input);
       const { data, error } = await insforge
         .from("metrics")
         .insert({
@@ -487,7 +488,7 @@ export function createSemanticLayerService(
           root_entity_id: input.rootEntityId ?? null,
           measure_id: input.measureId ?? null,
           time_dimension_id: input.timeDimensionId ?? null,
-          calculation: input.calculation ?? { type: "expression", expression: "NULL" },
+          calculation,
           filters: input.filters ?? [],
         })
         .select("id, workspace_id, name, slug, description, formula, certified, certified_by, certified_at, created_at, created_by, root_entity_id, measure_id, time_dimension_id, calculation, filters")
@@ -636,4 +637,26 @@ export function createSemanticLayerService(
       return suggestions;
     },
   };
+}
+
+function resolveCreateMetricCalculation(input: CreateMetricInput): SemanticMetricCalculation {
+  if (!input.rootEntityId) {
+    throw new Error("Metric root entity is required for semantic compilation");
+  }
+
+  if (input.calculation) {
+    return input.calculation;
+  }
+
+  if (input.measureId) {
+    return { type: "measure", measure: input.measureId };
+  }
+
+  const countMatch = input.formula.trim().match(/^count\s*\(\s*(\*|[a-zA-Z_][a-zA-Z0-9_]*|"[^"]+")\s*\)$/i);
+  if (countMatch) {
+    const counted = countMatch[1].replace(/^"|"$/g, "");
+    return counted === "*" ? { type: "count" } : { type: "count", distinct: counted };
+  }
+
+  throw new Error("Metric calculation metadata is required for semantic compilation");
 }

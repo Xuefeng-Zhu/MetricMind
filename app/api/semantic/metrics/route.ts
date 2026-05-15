@@ -135,7 +135,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     rootEntityId?: string;
     measureId?: string;
     timeDimensionId?: string;
-    calculation?: { type: "measure"; measure: string; aggregation?: "sum" | "count" | "average" | "min" | "max"; multiplier?: number } | { type: "count"; distinct?: string } | { type: "expression"; expression: string };
+    calculation?: { type: "measure"; measure: string; aggregation?: "sum" | "count" | "average" | "min" | "max"; multiplier?: number } | { type: "count"; entity?: string; distinct?: string } | { type: "expression"; expression: string };
     filters?: Array<{ field: string; operator: "eq" | "neq" | "gt" | "gte" | "lt" | "lte" | "in" | "not_in" | "contains" | "starts_with" | "ends_with" | "is_null" | "is_not_null"; value?: string | number | boolean | null | Array<string | number | boolean | null> }>;
   };
   try {
@@ -174,9 +174,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to create metric";
+    const status = message.includes("semantic compilation") ? 400 : 500;
     return NextResponse.json(
-      { error: "Internal Server Error", message },
-      { status: 500 }
+      { error: status === 400 ? "Bad Request" : "Internal Server Error", message },
+      { status }
     );
   }
 }

@@ -95,6 +95,45 @@ const registry: SemanticRegistry = {
       },
       filters: [],
     },
+    {
+      id: "metric_related_customers",
+      workspaceId: "ws1",
+      name: "Related Customers",
+      slug: "related_customers",
+      description: null,
+      formula: "COUNT(DISTINCT customers.id)",
+      certified: true,
+      certifiedBy: "u1",
+      certifiedAt: "2024-01-01",
+      createdAt: "2024-01-01",
+      createdBy: "u1",
+      rootEntityId: "subscription",
+      measureId: null,
+      timeDimensionId: null,
+      calculation: { type: "count", entity: "customer", distinct: "id" },
+      filters: [],
+    },
+    {
+      id: "metric_unsafe_expression",
+      workspaceId: "ws1",
+      name: "Unsafe Expression",
+      slug: "unsafe_expression",
+      description: null,
+      formula: "Unsafe",
+      certified: false,
+      certifiedBy: null,
+      certifiedAt: null,
+      createdAt: "2024-01-01",
+      createdBy: "u1",
+      rootEntityId: "subscription",
+      measureId: null,
+      timeDimensionId: null,
+      calculation: {
+        type: "expression",
+        expression: "(SELECT email FROM demo.customers LIMIT 1)",
+      },
+      filters: [],
+    },
   ],
   relationships: [
     {
@@ -151,6 +190,17 @@ describe("compileSemanticQuery", () => {
 
     expect(compiled.sql).toContain("DATE_TRUNC('week'");
     expect(compiled.sql).toContain("COUNT(DISTINCT CASE WHEN t0.\"status\" = 'canceled'");
+  });
+
+  it("respects count metric entity references", () => {
+    const compiled = compileSemanticQuery(registry, { metrics: ["related_customers"] });
+
+    expect(compiled.sql).toContain('LEFT JOIN "demo"."customers" AS t1');
+    expect(compiled.sql).toContain('COUNT(DISTINCT t1."id") AS "related_customers"');
+  });
+
+  it("rejects unsafe expression metrics", () => {
+    expect(() => compileSemanticQuery(registry, { metrics: ["unsafe_expression"] })).toThrow("Unsafe semantic expression");
   });
 
   it("rejects unknown metric", () => {

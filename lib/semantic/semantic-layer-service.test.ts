@@ -483,6 +483,8 @@ describe("SemanticLayerService", () => {
         name: "MRR",
         description: "Monthly Recurring Revenue",
         formula: "SUM(subscriptions.mrr_cents) / 100",
+        rootEntityId: "entity-1",
+        measureId: "measure-1",
         createdBy: "user-1",
       });
 
@@ -491,6 +493,13 @@ describe("SemanticLayerService", () => {
       expect(result.certified_by).toBeNull();
       expect(result.certified_at).toBeNull();
       expect(insforge.from).toHaveBeenCalledWith("metrics");
+      expect(mockChain.insert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          root_entity_id: "entity-1",
+          measure_id: "measure-1",
+          calculation: { type: "measure", measure: "measure-1" },
+        })
+      );
     });
 
     it("should throw on database error", async () => {
@@ -503,9 +512,23 @@ describe("SemanticLayerService", () => {
         service.createMetric("ws-1", {
           name: "Test",
           formula: "COUNT(*)",
+          rootEntityId: "entity-1",
           createdBy: "user-1",
         })
       ).rejects.toThrow("Insert failed");
+    });
+
+    it("should reject formula-only metrics that cannot be compiled semantically", async () => {
+      await expect(
+        service.createMetric("ws-1", {
+          name: "Unsafe",
+          formula: "SUM(raw_amount)",
+          rootEntityId: "entity-1",
+          createdBy: "user-1",
+        })
+      ).rejects.toThrow("Metric calculation metadata is required");
+
+      expect(insforge.from).not.toHaveBeenCalledWith("metrics");
     });
   });
 

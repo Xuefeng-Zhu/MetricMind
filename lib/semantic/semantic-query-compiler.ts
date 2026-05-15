@@ -61,11 +61,16 @@ export function compileSemanticQuery(
     resolveFilterDimensions(registry, metric.filters, rootEntity.id)
   );
 
+  const metricEntitySelections = metrics
+    .map((metric) => resolveMetricCalculationEntity(registry, metric, rootEntity))
+    .filter((entity) => entity.id !== rootEntity.id);
+
   const targetEntityIds = Array.from(
     new Set([
       ...dimensionSelections.map((selection) => selection.entity.id),
       ...filterSelections.map((selection) => selection.entity.id),
       ...metricFilterSelections.map((selection) => selection.entity.id),
+      ...metricEntitySelections.map((entity) => entity.id),
     ])
   );
 
@@ -80,7 +85,7 @@ export function compileSemanticQuery(
   const metricItems = metrics.map((metric) => ({
     metric,
     alias: metric.slug,
-    expression: buildMetricExpression(registry, metric, aliases.get(rootEntity.id) ?? rootAlias),
+    expression: buildMetricExpression(registry, metric, rootEntity, aliases),
   }));
 
   const selectItems: SelectItem[] = [
@@ -217,9 +222,11 @@ function buildDimensionExpression(
 function buildMetricExpression(
   registry: SemanticRegistry,
   metric: SemanticMetric,
-  rootAlias: string
+  rootEntity: SemanticEntity,
+  aliases: Map<string, string>
 ): string {
   const calculation = metric.calculation;
+  const rootAlias = aliases.get(rootEntity.id) ?? "t0";
 
   if (calculation.type === "measure") {
     const measure = resolveMetricMeasure(registry, metric);
@@ -232,13 +239,22 @@ function buildMetricExpression(
   }
 
   if (calculation.type === "count") {
+    const countEntity = resolveMetricCalculationEntity(registry, metric, rootEntity);
+    const countAlias = aliases.get(countEntity.id);
+    if (!countAlias) {
+      throw new Error(`Missing join alias for count metric '${metric.name}'`);
+    }
+
     if (calculation.distinct) {
-      return `COUNT(DISTINCT ${rootAlias}.${quoteIdentifier(calculation.distinct)})`;
+      return `COUNT(DISTINCT ${countAlias}.${quoteIdentifier(calculation.distinct)})`;
+    }
+    if (calculation.entity) {
+      return `COUNT(${countAlias}.${quoteIdentifier(countEntity.primaryKey)})`;
     }
     return "COUNT(*)";
   }
 
-  return replaceExpressionPlaceholders(calculation.expression, rootAlias);
+  return renderCuratedExpression(calculation.expression, rootAlias);
 }
 
 function compileFilters(
@@ -363,7 +379,7 @@ function renderColumnExpression(
   sourceColumn: string | null
 ): string {
   if (expression) {
-    return replaceExpressionPlaceholders(expression, alias);
+    return renderCuratedExpression(expression, alias);
   }
 
   if (!sourceColumn) {
@@ -373,8 +389,63 @@ function renderColumnExpression(
   return `${alias}.${quoteIdentifier(sourceColumn)}`;
 }
 
+function resolveMetricCalculationEntity(
+  registry: SemanticRegistry,
+  metric: SemanticMetric,
+  rootEntity: SemanticEntity
+): SemanticEntity {
+  const calculation = metric.calculation;
+  if (calculation.type !== "count" || !calculation.entity) {
+    return rootEntity;
+  }
+
+  const entityRef = calculation.entity;
+  const entityKeys = new Set([entityRef, slugifySemanticName(entityRef), entityRef.toLowerCase()]);
+  const entity = registry.entities.find((candidate) =>
+    entityKeys.has(candidate.id) ||
+    entityKeys.has(candidate.slug) ||
+    entityKeys.has(candidate.name.toLowerCase()) ||
+    entityKeys.has(slugifySemanticName(candidate.name))
+  );
+
+  if (!entity) {
+    throw new Error(`Metric '${metric.name}' references unknown count entity '${entityRef}'`);
+  }
+
+  return entity;
+}
+
+function renderCuratedExpression(expression: string, alias: string): string {
+  assertSafeSemanticExpression(expression);
+  return replaceExpressionPlaceholders(expression, alias);
+}
+
 function replaceExpressionPlaceholders(expression: string, alias: string): string {
   return expression.replace(/\{alias\}/g, alias).replace(/\{root\}/g, alias);
+}
+
+function assertSafeSemanticExpression(expression: string): void {
+  const normalized = stripSingleQuotedStrings(expression);
+  if (expression.trim().length === 0) {
+    throw new Error("Semantic expression cannot be empty");
+  }
+
+  if (/;|--|\/\*|\*\//.test(normalized)) {
+    throw new Error("Unsafe semantic expression: comments and statement separators are not allowed");
+  }
+
+  if (/\b(select|from|join|union|with|insert|update|delete|merge|alter|drop|create|truncate|grant|revoke|copy|call|execute)\b/i.test(normalized)) {
+    throw new Error("Unsafe semantic expression: SQL statements and subqueries are not allowed");
+  }
+
+  const withoutAllowedQualifiers = normalized.replace(/\{(?:alias|root)\}\s*\./g, "");
+  if (/(^|[^:])\b[a-zA-Z_][a-zA-Z0-9_]*\s*\./.test(withoutAllowedQualifiers) || /"[^"]+"\s*\./.test(withoutAllowedQualifiers)) {
+    throw new Error("Unsafe semantic expression: use {alias} or {root} for column references");
+  }
+}
+
+function stripSingleQuotedStrings(value: string): string {
+  return value.replace(/'(?:''|[^'])*'/g, "''");
 }
 
 function literal(value: SemanticFilter["value"]): string {
