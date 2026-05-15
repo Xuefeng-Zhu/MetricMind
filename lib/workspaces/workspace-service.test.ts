@@ -65,7 +65,7 @@ describe("WorkspaceService", () => {
       const service = createWorkspaceService(insforge);
       const result = await service.create("My Workspace", "user-1");
 
-      expect(result).toEqual(mockWorkspace);
+      expect(result).toEqual({ ...mockWorkspace, role: "owner" });
       expect(insforge.from).toHaveBeenCalledWith("workspaces");
       expect(workspacesBuilder.insert).toHaveBeenCalledWith({
         name: "My Workspace",

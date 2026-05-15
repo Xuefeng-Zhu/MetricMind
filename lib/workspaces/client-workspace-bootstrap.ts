@@ -10,8 +10,8 @@ interface BootstrapOptions {
   defaultWorkspaceName?: string;
 }
 
-function getWorkspaceRole(workspace: Workspace, userId: string) {
-  return workspace.role ?? (workspace.owner_id === userId ? "owner" : "viewer");
+export function getWorkspaceRole(workspace: Workspace) {
+  return workspace.role ?? "viewer";
 }
 
 async function fetchWorkspaces() {
@@ -77,7 +77,7 @@ export async function bootstrapWorkspaceContext({
     selectedWorkspace
       ? {
           workspaceId: selectedWorkspace.id,
-          role: getWorkspaceRole(selectedWorkspace, user.id),
+          role: getWorkspaceRole(selectedWorkspace),
         }
       : null
   );

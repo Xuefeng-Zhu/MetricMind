@@ -69,7 +69,10 @@ export function createWorkspaceService(
         throw new Error(memberError.message);
       }
 
-      return workspace as Workspace;
+      return {
+        ...workspace,
+        role: "owner",
+      } as Workspace;
     },
 
     async getByUser(userId: string): Promise<Workspace[]> {

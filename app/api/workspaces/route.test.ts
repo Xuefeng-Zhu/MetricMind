@@ -176,6 +176,7 @@ describe("POST /api/workspaces", () => {
       name: "New Workspace",
       created_at: "2024-01-01",
       owner_id: "user-1",
+      role: "owner",
     };
 
     mockCreateClient.mockReturnValue(createMockInsForge({ id: "user-1" }));

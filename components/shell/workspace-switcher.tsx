@@ -6,6 +6,7 @@ import { ChevronDown, Check } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import type { Workspace } from "@/lib/workspaces/workspace-service";
+import { getWorkspaceRole } from "@/lib/workspaces/client-workspace-bootstrap";
 
 export function WorkspaceSwitcher() {
   const { user, setWorkspaceContext } = useAuthStore();
@@ -71,10 +72,6 @@ export function WorkspaceSwitcher() {
       setIsOpen(false);
       event.preventDefault();
     }
-  }
-
-  function getWorkspaceRole(workspace: Workspace) {
-    return workspace.role ?? (workspace.owner_id === user?.id ? "owner" : "viewer");
   }
 
   function selectWorkspace(workspace: Workspace) {
