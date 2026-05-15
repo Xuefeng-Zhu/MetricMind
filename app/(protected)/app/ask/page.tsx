@@ -31,6 +31,10 @@ function formatRelativeTime(dateString: string): string {
   return date.toLocaleDateString();
 }
 
+function formatConfidence(confidence: number): string {
+  return `${Math.round(confidence * 100)}%`;
+}
+
 export default function AskPage() {
   const [activeConversation, setActiveConversation] = useState<string | null>(null);
   const [question, setQuestion] = useState("");
@@ -224,7 +228,7 @@ export default function AskPage() {
                     Answer
                   </h1>
                   <Badge variant="success" className="shrink-0 whitespace-nowrap">
-                    {answer.confidence}% confidence
+                    {formatConfidence(answer.confidence)} confidence
                   </Badge>
                 </div>
               )}

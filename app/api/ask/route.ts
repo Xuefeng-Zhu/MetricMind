@@ -144,7 +144,7 @@ async function handler(req: NextRequest, context: RBACContext): Promise<NextResp
         ...result,
         summary: buildSummary(question.trim(), result),
         chartData: buildChartData(result.results),
-        confidence: Math.round(result.confidence * 100),
+        confidence: result.confidence,
       },
     });
   } catch (err) {

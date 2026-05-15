@@ -229,7 +229,7 @@ describe("AskPage", () => {
           summary: "Your monthly recurring revenue is $125,000, up 12% from last month.",
           sql: "SELECT SUM(amount) FROM subscriptions WHERE status = 'active'",
           results: [{ mrr: 125000 }],
-          confidence: 92,
+          confidence: 0.92,
           metrics: [
             { label: "MRR", value: "$125K", trend: "up" as const },
           ],
