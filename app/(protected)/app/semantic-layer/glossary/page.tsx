@@ -65,7 +65,7 @@ export default function GlossaryPage() {
     setError(null);
 
     try {
-      const response = await fetch("/api/semantic-layer/glossary", {
+      const response = await fetch("/api/semantic/glossary", {
         headers: {
           "x-workspace-id": workspaceContext.workspaceId,
         },
@@ -92,7 +92,7 @@ export default function GlossaryPage() {
 
     try {
       // Load metrics for the related resources selector
-      const metricsResponse = await fetch("/api/semantic-layer/metrics", {
+      const metricsResponse = await fetch("/api/semantic/metrics", {
         headers: {
           "x-workspace-id": workspaceContext.workspaceId,
         },
@@ -108,7 +108,7 @@ export default function GlossaryPage() {
       }
 
       // Load entities for the related resources selector
-      const entitiesResponse = await fetch("/api/semantic-layer/entities", {
+      const entitiesResponse = await fetch("/api/semantic/entities", {
         headers: {
           "x-workspace-id": workspaceContext.workspaceId,
         },
@@ -144,7 +144,7 @@ export default function GlossaryPage() {
     setCreateError(null);
 
     try {
-      const response = await fetch("/api/semantic-layer/glossary", {
+      const response = await fetch("/api/semantic/glossary", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

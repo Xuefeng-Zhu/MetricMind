@@ -4,6 +4,86 @@ import { createSemanticLayerService } from "@/lib/semantic/semantic-layer-servic
 import { hasPermission, resolveWorkspaceRole } from "@/lib/rbac/rbac-middleware";
 
 /**
+ * GET /api/semantic/joins
+ * List join relationships for the workspace.
+ * Requires analyst+ role.
+ */
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  const insforge = createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await insforge.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json(
+      { error: "Unauthorized", message: "Authentication required" },
+      { status: 401 }
+    );
+  }
+
+  const workspaceId =
+    request.headers.get("x-workspace-id") ||
+    new URL(request.url).searchParams.get("workspaceId");
+
+  if (!workspaceId) {
+    return NextResponse.json(
+      {
+        error: "Bad Request",
+        message:
+          "Workspace ID is required. Provide it via x-workspace-id header or workspaceId query parameter.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const role = await resolveWorkspaceRole(insforge, user.id, workspaceId);
+  if (!role) {
+    return NextResponse.json(
+      { error: "Forbidden", message: "You are not a member of this workspace" },
+      { status: 403 }
+    );
+  }
+
+  if (!hasPermission(role, "analyst")) {
+    return NextResponse.json(
+      {
+        error: "Forbidden",
+        message: `Permission denied. Required role: analyst, your role: ${role}`,
+      },
+      { status: 403 }
+    );
+  }
+
+  try {
+    const { data, error } = await insforge
+      .from("join_relationships")
+      .select(
+        "id, workspace_id, source_entity_id, target_entity_id, join_type, source_column, target_column"
+      )
+      .eq("workspace_id", workspaceId);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const joins = (data ?? []).map((join) => ({
+      ...join,
+      condition: `${join.source_column} = ${join.target_column}`,
+    }));
+
+    return NextResponse.json({ joins });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to list joins";
+    return NextResponse.json(
+      { error: "Internal Server Error", message },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * POST /api/semantic/joins
  * Create a join relationship between two semantic entities.
  * Requires analyst+ role.

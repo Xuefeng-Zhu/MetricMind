@@ -4,8 +4,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { createClient } from "@/lib/insforge/client";
-import { createWorkspaceService, Workspace } from "@/lib/workspaces/workspace-service";
+import type { Workspace } from "@/lib/workspaces/workspace-service";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { Button } from "@/components/ui/button";
@@ -55,10 +54,14 @@ export default function WorkspacesPage() {
     setError(null);
 
     try {
-      const insforge = createClient();
-      const service = createWorkspaceService(insforge);
-      const userWorkspaces = await service.getByUser(user.id);
-      setWorkspaces(userWorkspaces);
+      const response = await fetch("/api/workspaces");
+      if (!response.ok) {
+        const body = await response.json();
+        throw new Error(body.message ?? "Failed to load workspaces");
+      }
+
+      const body = (await response.json()) as { workspaces: Workspace[] };
+      setWorkspaces(body.workspaces);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load workspaces");
     } finally {
@@ -71,9 +74,18 @@ export default function WorkspacesPage() {
     setError(null);
 
     try {
-      const insforge = createClient();
-      const service = createWorkspaceService(insforge);
-      const workspace = await service.create(data.name, user.id);
+      const response = await fetch("/api/workspaces", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: data.name }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json();
+        throw new Error(body.message ?? "Failed to create workspace");
+      }
+
+      const { workspace } = (await response.json()) as { workspace: Workspace };
       setWorkspaces([...workspaces, workspace]);
       reset();
     } catch (err) {
@@ -85,7 +97,7 @@ export default function WorkspacesPage() {
     setCurrentWorkspace(workspace);
     setWorkspaceContext({
       workspaceId: workspace.id,
-      role: workspace.owner_id === user?.id ? "owner" : "viewer",
+      role: workspace.role ?? (workspace.owner_id === user?.id ? "owner" : "viewer"),
     });
   }
 
@@ -107,7 +119,7 @@ export default function WorkspacesPage() {
               <Label htmlFor="workspace-name">Workspace Name</Label>
               <Input
                 id="workspace-name"
-                placeholder="My Workspace"
+                placeholder="Personal"
                 {...register("name")}
                 aria-describedby={errors.name ? "name-error" : undefined}
               />

@@ -57,7 +57,7 @@ export default function EntitiesPage() {
     setError(null);
 
     try {
-      const response = await fetch("/api/semantic-layer/entities", {
+      const response = await fetch("/api/semantic/entities", {
         headers: {
           "x-workspace-id": workspaceContext.workspaceId,
         },
@@ -118,7 +118,7 @@ export default function EntitiesPage() {
     setCreateError(null);
 
     try {
-      const response = await fetch("/api/semantic-layer/entities", {
+      const response = await fetch("/api/semantic/entities", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

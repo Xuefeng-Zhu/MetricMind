@@ -41,15 +41,18 @@ describe("useApiQuery", () => {
     } as any);
   }
 
-  describe("loading state when workspace is not available", () => {
-    it("returns loading state and does not fetch when workspaceId is null", async () => {
+  describe("state when workspace is not available", () => {
+    it("returns a workspace selection error and does not fetch when workspaceId is null", async () => {
       mockWorkspace(null);
 
       const { result } = renderHook(() => useApiQuery("/api/test"));
 
-      expect(result.current.isLoading).toBe(true);
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
       expect(result.current.data).toBeNull();
-      expect(result.current.error).toBeNull();
+      expect(result.current.error).toBe("Please select a workspace first.");
       expect(fetchMock).not.toHaveBeenCalled();
     });
   });
@@ -169,7 +172,10 @@ describe("useApiQuery", () => {
         useApiQuery("/api/test", { enabled: false })
       );
 
-      expect(result.current.isLoading).toBe(true);
+      await waitFor(() => {
+        expect(result.current.isLoading).toBe(false);
+      });
+
       expect(result.current.data).toBeNull();
       expect(result.current.error).toBeNull();
       expect(fetchMock).not.toHaveBeenCalled();

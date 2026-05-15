@@ -61,7 +61,39 @@ export async function GET(
   try {
     const service = createSemanticLayerService(insforge);
     const entity = await service.getEntity(params.id);
-    return NextResponse.json({ entity });
+
+    if (entity.workspace_id !== workspaceId) {
+      return NextResponse.json(
+        { error: "Not Found", message: "Semantic entity not found" },
+        { status: 404 }
+      );
+    }
+
+    const { data: dimensions, error: dimensionsError } = await insforge
+      .from("dimensions")
+      .select("id, entity_id, name, description, data_type, source_column")
+      .eq("entity_id", params.id);
+
+    if (dimensionsError) {
+      throw new Error(dimensionsError.message);
+    }
+
+    const { data: measures, error: measuresError } = await insforge
+      .from("measures")
+      .select(
+        "id, entity_id, name, description, data_type, source_column, default_aggregation"
+      )
+      .eq("entity_id", params.id);
+
+    if (measuresError) {
+      throw new Error(measuresError.message);
+    }
+
+    return NextResponse.json({
+      entity,
+      dimensions: dimensions ?? [],
+      measures: measures ?? [],
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to get entity";

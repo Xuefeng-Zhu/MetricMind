@@ -3,15 +3,49 @@
 import { useState, useRef, useEffect } from "react";
 import { ChevronDown, Check } from "lucide-react";
 
-const workspaces = [
-  { id: "acme", name: "Acme Corp" },
-  { id: "demo", name: "Demo Workspace" },
-];
+import { useAuthStore } from "@/stores/auth-store";
+import { useWorkspaceStore } from "@/stores/workspace-store";
+import type { Workspace } from "@/lib/workspaces/workspace-service";
 
 export function WorkspaceSwitcher() {
+  const { user, setWorkspaceContext } = useAuthStore();
+  const { workspaces, currentWorkspace, setWorkspaces, setCurrentWorkspace } =
+    useWorkspaceStore();
   const [isOpen, setIsOpen] = useState(false);
-  const [activeWorkspace, setActiveWorkspace] = useState("acme");
+  const [isLoading, setIsLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!user || workspaces.length > 0 || isLoading) return;
+
+    let cancelled = false;
+
+    async function loadWorkspaces() {
+      setIsLoading(true);
+      try {
+        const response = await fetch("/api/workspaces");
+        if (!response.ok) return;
+
+        const data = (await response.json()) as { workspaces: Workspace[] };
+        if (cancelled) return;
+
+        setWorkspaces(data.workspaces);
+        const selectedWorkspace = currentWorkspace ?? data.workspaces[0] ?? null;
+        if (selectedWorkspace) {
+          selectWorkspace(selectedWorkspace);
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+
+    void loadWorkspaces();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, workspaces.length]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -39,7 +73,22 @@ export function WorkspaceSwitcher() {
     }
   }
 
-  const currentWorkspace = workspaces.find((w) => w.id === activeWorkspace);
+  function getWorkspaceRole(workspace: Workspace) {
+    return workspace.role ?? (workspace.owner_id === user?.id ? "owner" : "viewer");
+  }
+
+  function selectWorkspace(workspace: Workspace) {
+    setCurrentWorkspace(workspace);
+    setWorkspaceContext({
+      workspaceId: workspace.id,
+      role: getWorkspaceRole(workspace),
+    });
+    setIsOpen(false);
+  }
+
+  const currentLabel =
+    currentWorkspace?.name ??
+    (isLoading ? "Loading..." : workspaces.length > 0 ? "Select workspace" : "No workspace");
 
   return (
     <div ref={containerRef} className="relative" onKeyDown={handleKeyDown}>
@@ -48,13 +97,14 @@ export function WorkspaceSwitcher() {
         onClick={() => setIsOpen(!isOpen)}
         aria-expanded={isOpen}
         aria-haspopup="listbox"
+        disabled={isLoading || workspaces.length === 0}
         className="w-full flex items-center justify-between px-3 py-2 rounded-md text-sm text-gray-300 hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
       >
-        <span>{currentWorkspace?.name}</span>
+        <span className="truncate">{currentLabel}</span>
         <ChevronDown className="w-4 h-4" />
       </button>
 
-      {isOpen && (
+      {isOpen && workspaces.length > 0 && (
         <div
           role="listbox"
           aria-label="Select workspace"
@@ -65,15 +115,12 @@ export function WorkspaceSwitcher() {
               key={workspace.id}
               type="button"
               role="option"
-              aria-selected={workspace.id === activeWorkspace}
-              onClick={() => {
-                setActiveWorkspace(workspace.id);
-                setIsOpen(false);
-              }}
+              aria-selected={workspace.id === currentWorkspace?.id}
+              onClick={() => selectWorkspace(workspace)}
               className="w-full flex items-center justify-between px-3 py-2 text-sm text-gray-300 hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
             >
               <span>{workspace.name}</span>
-              {workspace.id === activeWorkspace && (
+              {workspace.id === currentWorkspace?.id && (
                 <Check className="w-4 h-4 text-blue-400" />
               )}
             </button>

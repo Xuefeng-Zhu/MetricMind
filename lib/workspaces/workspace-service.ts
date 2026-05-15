@@ -7,6 +7,7 @@ export interface Workspace {
   name: string;
   created_at: string;
   owner_id: string;
+  role?: Role;
 }
 
 export interface Membership {
@@ -75,7 +76,7 @@ export function createWorkspaceService(
       // Get all workspaces where the user is a member
       const { data: memberships, error: memberError } = await insforge
         .from("workspace_members")
-        .select("workspace_id")
+        .select("workspace_id, role")
         .eq("user_id", userId);
 
       if (memberError) {
@@ -86,6 +87,12 @@ export function createWorkspaceService(
         return [];
       }
 
+      const roleByWorkspaceId = new Map(
+        memberships.map((membership) => [
+          membership.workspace_id,
+          membership.role as Role,
+        ])
+      );
       const workspaceIds = memberships.map((m) => m.workspace_id);
 
       const { data: workspaces, error: workspaceError } = await insforge
@@ -97,7 +104,10 @@ export function createWorkspaceService(
         throw new Error(workspaceError.message);
       }
 
-      return (workspaces ?? []) as Workspace[];
+      return (workspaces ?? []).map((workspace) => ({
+        ...workspace,
+        role: roleByWorkspaceId.get(workspace.id) ?? "viewer",
+      })) as Workspace[];
     },
 
     async inviteMember(

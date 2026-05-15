@@ -58,7 +58,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const service = createSemanticLayerService(insforge);
     const metrics = await service.getMetrics(workspaceId);
-    return NextResponse.json({ metrics });
+    return NextResponse.json({
+      metrics: metrics.map((metric) => ({
+        ...metric,
+        owner: metric.created_by,
+        certified_date: metric.certified_at,
+      })),
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to list metrics";

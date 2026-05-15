@@ -49,9 +49,9 @@ export function useApiQuery<T>(
 
   const doFetch = useCallback(async () => {
     if (!workspaceId || !enabled) {
-      setIsLoading(true);
+      setIsLoading(false);
       setData(null);
-      setError(null);
+      setError(enabled ? "Please select a workspace first." : null);
       return;
     }
 

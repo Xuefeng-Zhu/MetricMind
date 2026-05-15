@@ -33,11 +33,17 @@ export interface EntitiesResponse {
 export interface MetricsResponse {
   metrics: Array<{
     id: string;
+    workspace_id: string;
     name: string;
+    description: string | null;
     formula: string;
     owner: string;
     certified: boolean;
     certified_date: string | null;
+    certified_by: string | null;
+    certified_at: string | null;
+    created_at: string;
+    created_by: string;
   }>;
 }
 
@@ -48,6 +54,8 @@ export interface JoinsResponse {
     source_entity_id: string;
     target_entity_id: string;
     join_type: string;
+    source_column: string;
+    target_column: string;
     condition: string;
   }>;
 }

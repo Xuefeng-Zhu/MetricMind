@@ -50,7 +50,7 @@ export default function MetricDetailPage() {
     setError(null);
 
     try {
-      const response = await fetch(`/api/semantic-layer/metrics/${id}`, {
+      const response = await fetch(`/api/semantic/metrics/${id}`, {
         headers: {
           "x-workspace-id": workspaceContext.workspaceId,
         },
@@ -77,7 +77,7 @@ export default function MetricDetailPage() {
     setCertifyError(null);
 
     try {
-      const response = await fetch(`/api/semantic-layer/metrics/${id}/certify`, {
+      const response = await fetch(`/api/semantic/metrics/${id}/certify`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
