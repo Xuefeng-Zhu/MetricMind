@@ -9,6 +9,7 @@ interface DatasetTableProps {
   sourceName: string | null;
   onSelectDataset: (datasetId: string) => void;
   onCreateSemanticModel: () => void;
+  creatingSemanticModel?: boolean;
 }
 
 const statusStyles: Record<MetricMindDataset["status"], string> = {
@@ -33,6 +34,7 @@ export function DatasetTable({
   sourceName,
   onSelectDataset,
   onCreateSemanticModel,
+  creatingSemanticModel = false,
 }: DatasetTableProps) {
   return (
     <section
@@ -52,11 +54,11 @@ export function DatasetTable({
           type="button"
           variant="outline"
           onClick={onCreateSemanticModel}
-          disabled={datasets.length === 0}
+          disabled={datasets.length === 0 || creatingSemanticModel}
           className="gap-2"
         >
           <BrainCircuit className="h-4 w-4" aria-hidden="true" />
-          Create semantic model
+          {creatingSemanticModel ? "Creating model" : "Create semantic model"}
         </Button>
       </div>
 

@@ -2,20 +2,31 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockToast = vi.hoisted(() => vi.fn());
+const mockPush = vi.hoisted(() => vi.fn());
+const mockRefresh = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/use-toast", () => ({
   useToast: () => ({ toast: mockToast }),
 }));
 
-import DataSourcesRoute from "../page";
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: mockPush,
+    refresh: mockRefresh,
+  }),
+}));
+
+import { DataSourcesPage } from "@/components/data-sources/data-sources-page";
 
 describe("DataSourcesPage", () => {
   beforeEach(() => {
     mockToast.mockClear();
+    mockPush.mockClear();
+    mockRefresh.mockClear();
   });
 
   it("renders the management page with summary cards and primary actions", () => {
-    render(<DataSourcesRoute />);
+    render(<DataSourcesPage />);
 
     expect(screen.getByRole("heading", { name: "Data Sources" })).toBeInTheDocument();
     expect(screen.getAllByText("Connected sources").length).toBeGreaterThan(0);
@@ -28,7 +39,7 @@ describe("DataSourcesPage", () => {
   });
 
   it("filters sources by search query", () => {
-    render(<DataSourcesRoute />);
+    render(<DataSourcesPage />);
 
     fireEvent.change(screen.getByLabelText("Search data sources"), {
       target: { value: "zendesk" },
@@ -39,7 +50,7 @@ describe("DataSourcesPage", () => {
   });
 
   it("filters sources by status", () => {
-    render(<DataSourcesRoute />);
+    render(<DataSourcesPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Issue" }));
 
@@ -49,7 +60,7 @@ describe("DataSourcesPage", () => {
   });
 
   it("updates datasets and schema preview when a source is selected", () => {
-    render(<DataSourcesRoute />);
+    render(<DataSourcesPage />);
 
     fireEvent.click(screen.getByRole("button", { name: /Segment Product Events/i }));
 
@@ -61,7 +72,7 @@ describe("DataSourcesPage", () => {
   });
 
   it("updates schema preview when a dataset is selected", () => {
-    render(<DataSourcesRoute />);
+    render(<DataSourcesPage />);
 
     fireEvent.click(screen.getByText("Subscriptions"));
 
@@ -70,16 +81,16 @@ describe("DataSourcesPage", () => {
   });
 
   it("opens the CSV upload dialog", () => {
-    render(<DataSourcesRoute />);
+    render(<DataSourcesPage />);
 
     fireEvent.click(screen.getByRole("button", { name: /upload csv/i }));
 
     expect(screen.getByRole("dialog", { name: "Upload CSV" })).toBeInTheDocument();
-    expect(screen.getByText("q1_board_metrics.csv")).toBeInTheDocument();
+    expect(screen.getByText("No file selected")).toBeInTheDocument();
   });
 
   it("opens the connector gallery dialog", () => {
-    render(<DataSourcesRoute />);
+    render(<DataSourcesPage />);
 
     fireEvent.click(screen.getByRole("button", { name: /connect source/i }));
 
@@ -89,7 +100,7 @@ describe("DataSourcesPage", () => {
   });
 
   it("triggers mock sync and semantic model toasts", () => {
-    render(<DataSourcesRoute />);
+    render(<DataSourcesPage />);
 
     fireEvent.click(screen.getByRole("button", { name: /sync now/i }));
     expect(mockToast).toHaveBeenCalledWith(

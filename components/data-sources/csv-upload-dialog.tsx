@@ -9,22 +9,29 @@ import { Button } from "@/components/ui/button";
 interface CsvUploadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUpload: (fileName: string) => void;
+  onUpload: (file: File) => void | Promise<void>;
+  uploading?: boolean;
 }
 
-export function CsvUploadDialog({ open, onOpenChange, onUpload }: CsvUploadDialogProps) {
+export function CsvUploadDialog({
+  open,
+  onOpenChange,
+  onUpload,
+  uploading = false,
+}: CsvUploadDialogProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [fileName, setFileName] = useState("q1_board_metrics.csv");
+  const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
+  const fileName = file?.name ?? "No file selected";
 
   function chooseFile() {
     inputRef.current?.click();
   }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (file) {
-      setFileName(file.name);
+    const selectedFile = event.target.files?.[0];
+    if (selectedFile) {
+      setFile(selectedFile);
     }
   }
 
@@ -40,15 +47,18 @@ export function CsvUploadDialog({ open, onOpenChange, onUpload }: CsvUploadDialo
   function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setDragging(false);
-    const file = event.dataTransfer.files?.[0];
-    if (file) {
-      setFileName(file.name);
+    const droppedFile = event.dataTransfer.files?.[0];
+    if (droppedFile) {
+      setFile(droppedFile);
     }
   }
 
-  function handleUpload() {
-    onUpload(fileName);
-    onOpenChange(false);
+  async function handleUpload() {
+    if (!file || uploading) {
+      return;
+    }
+
+    await onUpload(file);
   }
 
   return (
@@ -62,7 +72,7 @@ export function CsvUploadDialog({ open, onOpenChange, onUpload }: CsvUploadDialo
                 Upload CSV
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-sm text-[#6B7280]">
-                Profile a CSV file with mock ingestion and AI semantic suggestions.
+                Profile a CSV file with schema inference and AI semantic suggestions.
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -103,9 +113,15 @@ export function CsvUploadDialog({ open, onOpenChange, onUpload }: CsvUploadDialo
                 Drag and drop a CSV, or choose a file
               </p>
               <p className="mt-2 text-sm text-[#6B7280]">
-                Mock upload only. Files are not sent to a backend.
+                Files are parsed server-side, profiled, and stored as JSON rows.
               </p>
-              <Button type="button" variant="outline" onClick={chooseFile} className="mt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={chooseFile}
+                disabled={uploading}
+                className="mt-4"
+              >
                 Choose file
               </Button>
             </div>
@@ -118,7 +134,9 @@ export function CsvUploadDialog({ open, onOpenChange, onUpload }: CsvUploadDialo
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-[#111827]">{fileName}</p>
                   <p className="text-xs text-[#6B7280]">
-                    Expected columns: metric_name, quarter, actual_value, plan_value
+                    {file
+                      ? `${new Intl.NumberFormat("en").format(file.size)} bytes selected`
+                      : "Choose a .csv file up to 50 MB"}
                   </p>
                 </div>
               </div>
@@ -142,13 +160,18 @@ export function CsvUploadDialog({ open, onOpenChange, onUpload }: CsvUploadDialo
 
           <div className="flex items-center justify-end gap-3 border-t border-[#E5E7EB] bg-[#F9FAFB] p-4">
             <Dialog.Close asChild>
-              <Button type="button" variant="outline">
+              <Button type="button" variant="outline" disabled={uploading}>
                 Cancel
               </Button>
             </Dialog.Close>
-            <Button type="button" onClick={handleUpload} className="gap-2">
+            <Button
+              type="button"
+              onClick={handleUpload}
+              disabled={!file || uploading}
+              className="gap-2"
+            >
               <Upload className="h-4 w-4" aria-hidden="true" />
-              Import CSV
+              {uploading ? "Importing" : "Import CSV"}
             </Button>
           </div>
         </Dialog.Content>

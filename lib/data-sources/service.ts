@@ -1,0 +1,615 @@
+import { z } from "zod";
+
+import { createClient } from "@/lib/insforge/server";
+import type { InsForgeDatabaseClient, User } from "@/lib/insforge/types";
+import {
+  hasPermission,
+  resolveProfileId,
+  resolveWorkspaceRole,
+  type Role,
+} from "@/lib/rbac/rbac-middleware";
+import { createWorkspaceService } from "@/lib/workspaces/workspace-service";
+import { dataSourceIssues as fallbackIssues } from "@/lib/mock-data/data-source-issues";
+import { datasetColumns as fallbackColumns } from "@/lib/mock-data/dataset-columns";
+import { dataSources as fallbackSources } from "@/lib/mock-data/data-sources";
+import { datasets as fallbackDatasets } from "@/lib/mock-data/datasets";
+import { syncRuns as fallbackSyncRuns } from "@/lib/mock-data/sync-runs";
+import { createCsvConnector } from "./connectors/csv-connector";
+import { createDemoConnector } from "./connectors/demo-connector";
+import { parseCsv } from "./csv/parse-csv";
+import { inferSchema } from "./csv/infer-schema";
+import { normalizeRows } from "./csv/normalize-rows";
+import { profileDataset } from "./profiling/profile-dataset";
+import { generateSemanticSuggestions } from "./profiling/semantic-suggestions";
+import { createDataSourcesRepository, type DataSourcesRepository } from "./repository";
+import { runMockSync } from "./sync/sync-runner";
+import type {
+  ActionResult,
+  DataSourcesPageData,
+  InferredColumn,
+  NormalizedDatasetRow,
+} from "./types";
+
+const MAX_CSV_FILE_SIZE_BYTES = 50 * 1024 * 1024;
+
+const uuidSchema = z.string().uuid();
+const syncInputSchema = z.object({
+  workspaceId: uuidSchema,
+  dataSourceId: uuidSchema,
+});
+const demoInputSchema = z.object({
+  workspaceId: uuidSchema,
+});
+const createSemanticModelInputSchema = z.object({
+  workspaceId: uuidSchema,
+  datasetId: uuidSchema,
+});
+const updateDatasetColumnInputSchema = z.object({
+  workspaceId: uuidSchema,
+  datasetId: uuidSchema,
+  columnId: uuidSchema,
+  patch: z
+    .object({
+      semanticRole: z
+        .enum(["primary_key", "foreign_key", "dimension", "measure", "timestamp", "pii"])
+        .optional(),
+      semanticType: z.string().min(1).max(120).optional(),
+      description: z.string().max(500).optional(),
+      isPii: z.boolean().optional(),
+      suggestedAggregation: z.enum(["sum", "count", "avg", "max", "min"]).nullable().optional(),
+      qualityScore: z.number().int().min(0).max(100).optional(),
+    })
+    .refine((value) => Object.keys(value).length > 0, {
+      message: "At least one column field must be updated.",
+    }),
+});
+
+interface AuthenticatedContext {
+  insforge: InsForgeDatabaseClient;
+  repository: DataSourcesRepository;
+  user: User;
+  profileId: string;
+  workspaceId: string;
+  role: Role;
+}
+
+export interface CsvUploadResult {
+  dataSource: unknown;
+  uploadedFile: { id: string };
+  dataset: unknown;
+  columns: unknown[];
+  profile: unknown;
+  suggestions: unknown[];
+  pageData: DataSourcesPageData;
+}
+
+function ok<T>(data: T): ActionResult<T> {
+  return { ok: true, data };
+}
+
+export function actionError(error: unknown, status = 500): ActionResult<never> {
+  return {
+    ok: false,
+    error: error instanceof Error ? error.message : "Unexpected data source error",
+    status,
+  };
+}
+
+function displayNameFromFile(fileName: string): string {
+  return fileName
+    .replace(/\.csv$/i, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function datasetNameFromFile(fileName: string): string {
+  return fileName
+    .replace(/\.csv$/i, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "uploaded_dataset";
+}
+
+function averageQuality(columns: InferredColumn[]): number {
+  if (columns.length === 0) return 0;
+  return Math.round(
+    columns.reduce((total, column) => total + column.qualityScore, 0) / columns.length
+  );
+}
+
+function semanticCoverage(columns: InferredColumn[]): number {
+  if (columns.length === 0) return 0;
+  return Math.round(
+    (columns.filter((column) => column.semanticRole).length / columns.length) * 100
+  );
+}
+
+function primaryKey(columns: InferredColumn[]): string | null {
+  return (
+    columns.find((column) => column.semanticRole === "primary_key")?.name ??
+    columns.find((column) => column.name === "id")?.name ??
+    null
+  );
+}
+
+function badRequest(message: string): Error {
+  const error = new Error(message);
+  error.name = "BadRequestError";
+  return error;
+}
+
+function toDatasetStatus(score: number): "ready" | "needs_review" {
+  return score >= 75 ? "ready" : "needs_review";
+}
+
+function pageDataFallback(workspaceId: string | null, role: Role | null): DataSourcesPageData {
+  return {
+    workspaceId,
+    role,
+    sources: fallbackSources,
+    datasets: fallbackDatasets,
+    columnsByDatasetId: fallbackColumns,
+    issues: fallbackIssues,
+    syncRuns: fallbackSyncRuns,
+  };
+}
+
+async function getAuthenticatedContext(
+  workspaceId: string,
+  requiredRole: Role,
+  insforge: InsForgeDatabaseClient = createClient()
+): Promise<AuthenticatedContext> {
+  const {
+    data: { user },
+    error,
+  } = await insforge.auth.getUser();
+
+  if (error || !user) {
+    const authError = new Error("Authentication required");
+    authError.name = "UnauthorizedError";
+    throw authError;
+  }
+
+  const role = await resolveWorkspaceRole(insforge, user.id, workspaceId);
+  if (!role) {
+    const forbidden = new Error("You are not a member of this workspace");
+    forbidden.name = "ForbiddenError";
+    throw forbidden;
+  }
+
+  if (!hasPermission(role, requiredRole)) {
+    const forbidden = new Error(
+      `Permission denied. Required role: ${requiredRole}, your role: ${role}`
+    );
+    forbidden.name = "ForbiddenError";
+    throw forbidden;
+  }
+
+  const profileId = await resolveProfileId(insforge, user.id);
+
+  return {
+    insforge,
+    repository: createDataSourcesRepository(insforge),
+    user,
+    profileId,
+    workspaceId,
+    role,
+  };
+}
+
+function statusFromError(error: unknown): number {
+  if (error instanceof Error && error.name === "UnauthorizedError") return 401;
+  if (error instanceof Error && error.name === "ForbiddenError") return 403;
+  if (error instanceof Error && error.name === "BadRequestError") return 400;
+  if (error instanceof z.ZodError) return 400;
+  return 500;
+}
+
+async function logAudit(
+  repository: DataSourcesRepository,
+  input: Parameters<DataSourcesRepository["insertAuditEvent"]>[0]
+) {
+  try {
+    await repository.insertAuditEvent(input);
+  } catch {
+    // Audit logging should not make user-facing ingestion fail, but the
+    // repository path is still covered in tests so policy regressions are visible.
+  }
+}
+
+function validateCsvFile(file: File) {
+  if (file.size > MAX_CSV_FILE_SIZE_BYTES) {
+    throw badRequest("CSV file exceeds the 50 MB limit.");
+  }
+
+  const validName = file.name.toLowerCase().endsWith(".csv");
+  const validType =
+    !file.type ||
+    file.type === "text/csv" ||
+    file.type === "application/vnd.ms-excel" ||
+    file.type === "application/csv";
+
+  if (!validName || !validType) {
+    throw badRequest("Only CSV files are supported.");
+  }
+}
+
+async function persistConnectorDataset(input: {
+  context: AuthenticatedContext;
+  dataSourceId: string;
+  uploadedFileId?: string | null;
+  name: string;
+  displayName: string;
+  description: string;
+  rows: NormalizedDatasetRow[];
+  columns: InferredColumn[];
+  owner: string;
+}) {
+  const profile = profileDataset(input.rows, input.columns);
+  const suggestions = generateSemanticSuggestions(input.name, input.columns);
+  const dataset = await input.context.repository.createDataset({
+    workspaceId: input.context.workspaceId,
+    dataSourceId: input.dataSourceId,
+    uploadedFileId: input.uploadedFileId,
+    name: input.name,
+    displayName: input.displayName,
+    description: input.description,
+    rowCount: input.rows.length,
+    columnCount: input.columns.length,
+    primaryKey: primaryKey(input.columns),
+    status: toDatasetStatus(profile.semanticReadinessScore),
+    qualityScore: averageQuality(input.columns),
+    semanticCoverage: semanticCoverage(input.columns),
+    piiColumnCount: profile.piiColumnCount,
+    owner: input.owner,
+    sampleQuestion: `What changed most in ${input.displayName}?`,
+  });
+  const columns = await input.context.repository.createDatasetColumns({
+    dataSourceId: input.dataSourceId,
+    datasetId: dataset.id,
+    columns: input.columns,
+  });
+  await input.context.repository.insertDatasetRows({
+    workspaceId: input.context.workspaceId,
+    datasetId: dataset.id,
+    rows: input.rows,
+  });
+  const datasetProfile = await input.context.repository.createDatasetProfile({
+    workspaceId: input.context.workspaceId,
+    datasetId: dataset.id,
+    profile,
+    suggestions,
+  });
+
+  return { dataset, columns, profile: datasetProfile, suggestions };
+}
+
+export async function getDataSourcesPageData(): Promise<DataSourcesPageData> {
+  const insforge = createClient();
+  const repository = createDataSourcesRepository(insforge);
+  const {
+    data: { user },
+  } = await insforge.auth.getUser();
+
+  if (!user) {
+    return pageDataFallback(null, null);
+  }
+
+  const profileId = await resolveProfileId(insforge, user.id);
+  const workspaces = await createWorkspaceService(insforge).getByUser(profileId);
+  const workspace = workspaces[0];
+  if (!workspace) {
+    return pageDataFallback(null, null);
+  }
+
+  try {
+    const data = await repository.listPageData(workspace.id, workspace.role ?? null);
+    return {
+      workspaceId: workspace.id,
+      role: workspace.role ?? null,
+      ...data,
+    };
+  } catch {
+    return pageDataFallback(workspace.id, workspace.role ?? null);
+  }
+}
+
+export async function uploadCsvDataset(input: {
+  workspaceId: string;
+  file: File;
+}): Promise<CsvUploadResult> {
+  const workspaceId = uuidSchema.parse(input.workspaceId);
+  const context = await getAuthenticatedContext(workspaceId, "analyst");
+  validateCsvFile(input.file);
+
+  const buffer = Buffer.from(await input.file.arrayBuffer());
+  const parsed = parseCsv(buffer);
+  if (parsed.headers.length === 0) {
+    throw badRequest("CSV file is empty.");
+  }
+
+  const inferredColumns = inferSchema(parsed.headers, parsed.rows);
+  const normalizedRows = normalizeRows(parsed.rows, inferredColumns);
+  const datasetName = datasetNameFromFile(input.file.name);
+  const displayName = displayNameFromFile(input.file.name);
+  const previewProfile = profileDataset(normalizedRows, inferredColumns);
+
+  const dataSource = await context.repository.createDataSource({
+    workspaceId: context.workspaceId,
+    name: `CSV Upload: ${displayName}`,
+    type: "csv",
+    status: "processing",
+    rowCount: normalizedRows.length,
+    fileSizeBytes: input.file.size,
+    provider: "CSV",
+    category: "File Upload",
+    description: `Uploaded CSV dataset from ${input.file.name}.`,
+    owner: "CSV Upload",
+    region: "Manual",
+    healthScore: previewProfile.semanticReadinessScore,
+    syncStatus: "syncing",
+    credentialStatus: "manual",
+    connectorVersion: "csv-import",
+    lastSyncedAt: new Date().toISOString(),
+    nextSyncAt: null,
+    metadata: { tags: ["csv", "upload"] },
+  });
+
+  try {
+    const connector = createCsvConnector({
+      name: datasetName,
+      displayName,
+      description: `Uploaded CSV dataset from ${input.file.name}.`,
+      primaryKey: primaryKey(inferredColumns),
+      columns: inferredColumns,
+      rows: normalizedRows,
+    });
+    await connector.testConnection();
+    const uploadedFile = await context.repository.createUploadedFile({
+      workspaceId: context.workspaceId,
+      dataSourceId: dataSource.id,
+      uploadedBy: context.profileId,
+      originalName: input.file.name,
+      contentType: input.file.type || "text/csv",
+      sizeBytes: input.file.size,
+      rowCount: normalizedRows.length,
+    });
+    const [connectorDataset] = await connector.discoverDatasets();
+    const result = await persistConnectorDataset({
+      context,
+      dataSourceId: dataSource.id,
+      uploadedFileId: uploadedFile.id,
+      name: connectorDataset.name,
+      displayName: connectorDataset.displayName,
+      description: connectorDataset.description,
+      rows: connectorDataset.rows,
+      columns: connectorDataset.columns,
+      owner: "CSV Upload",
+    });
+
+    const updatedDataSource = await context.repository.updateDataSource(dataSource.id, {
+      status: "ready",
+      sync_status: "synced",
+      health_score: result.profile.semantic_readiness_score,
+      row_count: normalizedRows.length,
+      last_synced_at: new Date().toISOString(),
+    });
+    await logAudit(context.repository, {
+      workspaceId: context.workspaceId,
+      actorId: context.profileId,
+      action: "dataset.uploaded",
+      targetType: "dataset",
+      targetId: result.dataset.id,
+      metadata: {
+        file_name: input.file.name,
+        row_count: normalizedRows.length,
+        skipped_rows: parsed.skippedRows,
+      },
+    });
+
+    const pageData = await context.repository.listPageData(context.workspaceId, context.role);
+    return {
+      dataSource: updatedDataSource,
+      uploadedFile,
+      dataset: result.dataset,
+      columns: result.columns,
+      profile: result.profile,
+      suggestions: result.suggestions,
+      pageData: {
+        workspaceId: context.workspaceId,
+        role: context.role,
+        ...pageData,
+      },
+    };
+  } catch (error) {
+    await context.repository.updateDataSource(dataSource.id, {
+      status: "error",
+      sync_status: "attention",
+      health_score: 0,
+    });
+    throw error;
+  }
+}
+
+export async function createDemoDataSource(input: z.infer<typeof demoInputSchema>) {
+  const parsed = demoInputSchema.parse(input);
+  const context = await getAuthenticatedContext(parsed.workspaceId, "admin");
+  const connector = createDemoConnector();
+  const datasets = await connector.discoverDatasets();
+  const totalRows = datasets.reduce((total, dataset) => total + dataset.rows.length, 0);
+  const dataSource = await context.repository.createDataSource({
+    workspaceId: context.workspaceId,
+    name: "Demo SaaS Dataset",
+    type: "demo",
+    status: "ready",
+    rowCount: totalRows,
+    provider: "MetricMind",
+    category: "Demo",
+    description:
+      "Deterministic sample SaaS data for evaluating MetricMind without production systems.",
+    owner: "MetricMind Demo",
+    region: "Sandbox",
+    healthScore: 100,
+    syncStatus: "synced",
+    credentialStatus: "manual",
+    connectorVersion: "demo-2026.05",
+    lastSyncedAt: new Date().toISOString(),
+    nextSyncAt: null,
+    metadata: { tags: ["demo", "sample", "safe"] },
+  });
+
+  for (const dataset of datasets) {
+    await persistConnectorDataset({
+      context,
+      dataSourceId: dataSource.id,
+      name: dataset.name,
+      displayName: dataset.displayName,
+      description: dataset.description,
+      rows: dataset.rows,
+      columns: dataset.columns,
+      owner: "MetricMind Demo",
+    });
+  }
+
+  await logAudit(context.repository, {
+    workspaceId: context.workspaceId,
+    actorId: context.profileId,
+    action: "demo_data_source.created",
+    targetType: "data_source",
+    targetId: dataSource.id,
+    metadata: { dataset_count: datasets.length },
+  });
+
+  const pageData = await context.repository.listPageData(context.workspaceId, context.role);
+  return {
+    dataSource,
+    pageData: {
+      workspaceId: context.workspaceId,
+      role: context.role,
+      ...pageData,
+    },
+  };
+}
+
+export async function syncDataSource(input: z.infer<typeof syncInputSchema>) {
+  const parsed = syncInputSchema.parse(input);
+  const context = await getAuthenticatedContext(parsed.workspaceId, "admin");
+  const source = await context.repository.getDataSource(
+    context.workspaceId,
+    parsed.dataSourceId
+  );
+
+  try {
+    const result = await runMockSync({
+      repository: context.repository,
+      workspaceId: context.workspaceId,
+      dataSourceId: source.id,
+      profileId: context.profileId,
+      rowCount: source.row_count ?? 0,
+      sourceName: source.name,
+    });
+    await logAudit(context.repository, {
+      workspaceId: context.workspaceId,
+      actorId: context.profileId,
+      action: "datasource.synced",
+      targetType: "data_source",
+      targetId: source.id,
+      metadata: { sync_run_id: result.syncRun.id },
+    });
+
+    const pageData = await context.repository.listPageData(context.workspaceId, context.role);
+    return {
+      ...result,
+      pageData: {
+        workspaceId: context.workspaceId,
+        role: context.role,
+        ...pageData,
+      },
+    };
+  } catch (error) {
+    await context.repository.updateDataSource(source.id, {
+      sync_status: "attention",
+      status: "error",
+    });
+    await logAudit(context.repository, {
+      workspaceId: context.workspaceId,
+      actorId: context.profileId,
+      action: "datasource.sync_failed",
+      targetType: "data_source",
+      targetId: source.id,
+    });
+    throw error;
+  }
+}
+
+export async function updateDatasetColumn(input: z.infer<typeof updateDatasetColumnInputSchema>) {
+  const parsed = updateDatasetColumnInputSchema.parse(input);
+  const context = await getAuthenticatedContext(parsed.workspaceId, "admin");
+  const patch = Object.fromEntries(
+    Object.entries({
+      semantic_role: parsed.patch.semanticRole,
+      semantic_type: parsed.patch.semanticType,
+      description: parsed.patch.description,
+      is_pii: parsed.patch.isPii,
+      suggested_aggregation: parsed.patch.suggestedAggregation,
+      quality_score: parsed.patch.qualityScore,
+    }).filter(([, value]) => value !== undefined)
+  );
+  const column = await context.repository.updateDatasetColumn({
+    workspaceId: context.workspaceId,
+    datasetId: parsed.datasetId,
+    columnId: parsed.columnId,
+    patch,
+  });
+
+  await logAudit(context.repository, {
+    workspaceId: context.workspaceId,
+    actorId: context.profileId,
+    action: "dataset.column_updated",
+    targetType: "dataset_column",
+    targetId: column.id,
+    metadata: { dataset_id: parsed.datasetId },
+  });
+
+  return column;
+}
+
+export async function createSemanticModelFromDataset(
+  input: z.infer<typeof createSemanticModelInputSchema>
+) {
+  const parsed = createSemanticModelInputSchema.parse(input);
+  const context = await getAuthenticatedContext(parsed.workspaceId, "analyst");
+  const graph = await context.repository.getDatasetGraph(
+    context.workspaceId,
+    parsed.datasetId
+  );
+  const result = await context.repository.createSemanticModelFromDataset({
+    workspaceId: context.workspaceId,
+    userId: context.profileId,
+    ...graph,
+  });
+
+  await logAudit(context.repository, {
+    workspaceId: context.workspaceId,
+    actorId: context.profileId,
+    action: "semantic_model.created",
+    targetType: "semantic_model",
+    targetId: result.modelId,
+    metadata: {
+      dataset_id: parsed.datasetId,
+      entity_id: result.entityId,
+      metric_ids: result.metricIds,
+    },
+  });
+
+  return result;
+}
+
+export async function toActionResult<T>(callback: () => Promise<T>): Promise<ActionResult<T>> {
+  try {
+    return ok(await callback());
+  } catch (error) {
+    return actionError(error, statusFromError(error));
+  }
+}

@@ -203,6 +203,16 @@ export const dataSources: MetricMindDataSource[] = [
 
 export const connectorGallery: ConnectorGalleryItem[] = [
   {
+    id: "connector-demo-saas",
+    name: "Demo SaaS Dataset",
+    provider: "MetricMind",
+    category: "Demo",
+    description: "Create deterministic SaaS datasets for testing without production data.",
+    setupTime: "1 min",
+    availability: "available",
+    recommendedFor: "Evaluation workspaces",
+  },
+  {
     id: "connector-snowflake",
     name: "Snowflake",
     provider: "Snowflake",
