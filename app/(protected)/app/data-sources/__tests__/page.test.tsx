@@ -1,102 +1,104 @@
-/**
- * Unit tests for Data Sources page.
- *
- * Validates: Requirements 2.1, 2.2, 2.3, 2.4, 2.5
- */
-import { render, screen } from "@testing-library/react";
-import { vi, describe, it, expect, beforeEach } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/hooks/use-api-query", () => ({
-  useApiQuery: vi.fn(),
+const mockToast = vi.hoisted(() => vi.fn());
+
+vi.mock("@/hooks/use-toast", () => ({
+  useToast: () => ({ toast: mockToast }),
 }));
 
-import DataSourcesPage from "../page";
-import { useApiQuery } from "@/hooks/use-api-query";
-
-const mockedUseApiQuery = vi.mocked(useApiQuery);
+import DataSourcesRoute from "../page";
 
 describe("DataSourcesPage", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    mockToast.mockClear();
   });
 
-  describe("loading state", () => {
-    it("renders a loading skeleton when data is being fetched", () => {
-      mockedUseApiQuery.mockReturnValue({
-        data: null,
-        isLoading: true,
-        error: null,
-        refetch: vi.fn(),
-      });
+  it("renders the management page with summary cards and primary actions", () => {
+    render(<DataSourcesRoute />);
 
-      render(<DataSourcesPage />);
-
-      expect(screen.getByRole("status")).toBeInTheDocument();
-      expect(screen.getByText("Data Sources")).toBeInTheDocument();
-    });
+    expect(screen.getByRole("heading", { name: "Data Sources" })).toBeInTheDocument();
+    expect(screen.getAllByText("Connected sources").length).toBeGreaterThan(0);
+    expect(screen.getByText("Datasets profiled")).toBeInTheDocument();
+    expect(screen.getByText("Rows synced")).toBeInTheDocument();
+    expect(screen.getAllByText("Open issues").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /upload csv/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /connect source/i })).toBeInTheDocument();
+    expect(screen.getAllByText("Snowflake Revenue Warehouse").length).toBeGreaterThan(0);
   });
 
-  describe("error state", () => {
-    it("renders an error message with a retry button when the API fails", () => {
-      const mockRefetch = vi.fn();
-      mockedUseApiQuery.mockReturnValue({
-        data: null,
-        isLoading: false,
-        error: "Something went wrong",
-        refetch: mockRefetch,
-      });
+  it("filters sources by search query", () => {
+    render(<DataSourcesRoute />);
 
-      render(<DataSourcesPage />);
-
-      expect(screen.getByText("Something went wrong")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Search data sources"), {
+      target: { value: "zendesk" },
     });
+
+    expect(screen.getAllByText("Zendesk Support").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Snowflake Revenue Warehouse")).not.toBeInTheDocument();
   });
 
-  describe("empty state", () => {
-    it("renders encouragement to connect a source when no data sources exist", () => {
-      mockedUseApiQuery.mockReturnValue({
-        data: { dataSources: [] },
-        isLoading: false,
-        error: null,
-        refetch: vi.fn(),
-      });
+  it("filters sources by status", () => {
+    render(<DataSourcesRoute />);
 
-      render(<DataSourcesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Issue" }));
 
-      expect(screen.getByText("No data sources connected")).toBeInTheDocument();
-      expect(
-        screen.getByText(
-          "Connect a data source or upload a CSV to get started with MetricMind."
-        )
-      ).toBeInTheDocument();
-    });
+    expect(screen.getAllByText("Stripe Billing").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Zendesk Support").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Snowflake Revenue Warehouse")).not.toBeInTheDocument();
   });
 
-  describe("success state", () => {
-    it("renders source cards with data source names", () => {
-      mockedUseApiQuery.mockReturnValue({
-        data: {
-          dataSources: [
-            {
-              id: "1",
-              name: "Sales DB",
-              type: "database",
-              status: "active",
-              workspace_id: "ws-1",
-              created_at: "2024-01-01",
-            },
-          ],
-        },
-        isLoading: false,
-        error: null,
-        refetch: vi.fn(),
-      });
+  it("updates datasets and schema preview when a source is selected", () => {
+    render(<DataSourcesRoute />);
 
-      render(<DataSourcesPage />);
+    fireEvent.click(screen.getByRole("button", { name: /Segment Product Events/i }));
 
-      expect(screen.getByText("Sales DB")).toBeInTheDocument();
-      expect(screen.getByLabelText("Connected data sources")).toBeInTheDocument();
-    });
+    expect(screen.getAllByText("Product Events").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(/Which feature events predict expansion within 30 days/)
+    ).toBeInTheDocument();
+    expect(screen.getByText("event_id")).toBeInTheDocument();
+  });
+
+  it("updates schema preview when a dataset is selected", () => {
+    render(<DataSourcesRoute />);
+
+    fireEvent.click(screen.getByText("Subscriptions"));
+
+    expect(screen.getByText("Primary key: subscription_id")).toBeInTheDocument();
+    expect(screen.getByText("Define Monthly Recurring Revenue")).toBeInTheDocument();
+  });
+
+  it("opens the CSV upload dialog", () => {
+    render(<DataSourcesRoute />);
+
+    fireEvent.click(screen.getByRole("button", { name: /upload csv/i }));
+
+    expect(screen.getByRole("dialog", { name: "Upload CSV" })).toBeInTheDocument();
+    expect(screen.getByText("q1_board_metrics.csv")).toBeInTheDocument();
+  });
+
+  it("opens the connector gallery dialog", () => {
+    render(<DataSourcesRoute />);
+
+    fireEvent.click(screen.getByRole("button", { name: /connect source/i }));
+
+    expect(screen.getByRole("dialog", { name: "Connector gallery" })).toBeInTheDocument();
+    expect(screen.getByText("BigQuery")).toBeInTheDocument();
+    expect(screen.getByText("PostgreSQL")).toBeInTheDocument();
+  });
+
+  it("triggers mock sync and semantic model toasts", () => {
+    render(<DataSourcesRoute />);
+
+    fireEvent.click(screen.getByRole("button", { name: /sync now/i }));
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Mock sync started" })
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: /create semantic model/i })[0]);
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Semantic model draft created" })
+    );
   });
 });
