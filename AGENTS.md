@@ -298,6 +298,7 @@ See [docs/release.md](docs/release.md).
 ## Supporting Docs
 
 - [Architecture](docs/architecture.md)
+- [Architecture decisions](docs/adr/overview.md)
 - [Product overview](docs/product-overview.md)
 - [Development](docs/development.md)
 - [Testing](docs/testing.md)

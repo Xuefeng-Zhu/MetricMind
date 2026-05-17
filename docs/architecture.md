@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes the architecture currently visible in the repository. For setup and commands, see [development.md](development.md). For security-specific details, see [security.md](security.md).
+This document describes the architecture currently visible in the repository. For setup and commands, see [development.md](development.md). For security-specific details, see [security.md](security.md). For decision records, see [adr/overview.md](adr/overview.md).
 
 ## System Shape
 
@@ -110,6 +110,8 @@ Rules that matter:
 - `lib/semantic/semantic-query-compiler.ts` is the only approved source of generated analytics SQL.
 - `execute_readonly_query` in `migrations/20260514080841_initial-schema.sql` rejects mutating SQL and applies a timeout.
 
+See [adr/semantic-layer.md](adr/semantic-layer.md) for the decision record behind this contract.
+
 ## Data Sources Architecture
 
 Current rich Data Sources flow:
@@ -135,6 +137,8 @@ Key modules:
 - Server actions: `app/(protected)/app/data-sources/actions.ts`
 
 There is also an older `lib/data-sources/data-source-service.ts` used by `app/api/data-sources/route.ts`. Check which endpoint a UI flow actually calls before modifying either service.
+
+See [adr/data-source.md](adr/data-source.md) for the data-source lifecycle decision record.
 
 ## Semantic Layer Architecture
 
