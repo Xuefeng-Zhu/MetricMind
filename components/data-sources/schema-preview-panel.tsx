@@ -16,6 +16,7 @@ interface SchemaPreviewPanelProps {
   issues: DataSourceIssue[];
   onApplySuggestion: (suggestion: SemanticSuggestion) => void;
   onCreateSemanticModel: () => void;
+  creatingSemanticModel?: boolean;
 }
 
 function formatNumber(value: number): string {
@@ -29,6 +30,7 @@ export function SchemaPreviewPanel({
   issues,
   onApplySuggestion,
   onCreateSemanticModel,
+  creatingSemanticModel = false,
 }: SchemaPreviewPanelProps) {
   return (
     <aside className="space-y-4 lg:sticky lg:top-24 lg:self-start">
@@ -116,11 +118,11 @@ export function SchemaPreviewPanel({
                   type="button"
                   size="sm"
                   onClick={onCreateSemanticModel}
-                  disabled={!dataset}
+                  disabled={!dataset || creatingSemanticModel}
                   className="mt-3 gap-2"
                 >
                   <BrainCircuit className="h-4 w-4" aria-hidden="true" />
-                  Create semantic model
+                  {creatingSemanticModel ? "Creating model" : "Create semantic model"}
                 </Button>
               </div>
             </div>

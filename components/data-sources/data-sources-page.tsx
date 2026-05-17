@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PlugZap, RefreshCw, Upload } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -24,8 +25,42 @@ import {
 } from "@/lib/mock-data/data-sources";
 import { dataSourceIssues } from "@/lib/mock-data/data-source-issues";
 import { datasetColumns } from "@/lib/mock-data/dataset-columns";
-import { datasets as mockDatasets, type MetricMindDataset, type SemanticSuggestion } from "@/lib/mock-data/datasets";
+import {
+  datasets as mockDatasets,
+  type MetricMindDataset,
+  type SemanticSuggestion,
+} from "@/lib/mock-data/datasets";
 import { syncRuns as mockSyncRuns } from "@/lib/mock-data/sync-runs";
+import type { ActionResult, DataSourcesPageData } from "@/lib/data-sources/types";
+
+type PageDataActionPayload = {
+  pageData?: DataSourcesPageData;
+};
+
+interface DataSourcesPageProps {
+  initialData?: DataSourcesPageData;
+  createDemoDataSourceAction?: (input: {
+    workspaceId: string;
+  }) => Promise<ActionResult<PageDataActionPayload>>;
+  syncDataSourceAction?: (input: {
+    workspaceId: string;
+    dataSourceId: string;
+  }) => Promise<ActionResult<PageDataActionPayload>>;
+  createSemanticModelFromDatasetAction?: (input: {
+    workspaceId: string;
+    datasetId: string;
+  }) => Promise<ActionResult<{ modelId: string; entityId: string; metricIds: string[] }>>;
+}
+
+const fallbackPageData: DataSourcesPageData = {
+  workspaceId: null,
+  role: null,
+  sources: mockDataSources,
+  datasets: mockDatasets,
+  columnsByDatasetId: datasetColumns,
+  issues: dataSourceIssues,
+  syncRuns: mockSyncRuns,
+};
 
 function buildDatasetMap(datasets: MetricMindDataset[]) {
   const map = new Map<string, MetricMindDataset[]>();
@@ -35,6 +70,28 @@ function buildDatasetMap(datasets: MetricMindDataset[]) {
     map.set(dataset.sourceId, sourceDatasets);
   }
   return map;
+}
+
+function firstDatasetForSource(
+  datasets: MetricMindDataset[],
+  sourceId: string | null
+): string | null {
+  if (!sourceId) {
+    return null;
+  }
+
+  return datasets.find((dataset) => dataset.sourceId === sourceId)?.id ?? null;
+}
+
+function hasPageData(value: unknown): value is PageDataActionPayload & {
+  pageData: DataSourcesPageData;
+} {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    "pageData" in value &&
+    Boolean((value as PageDataActionPayload).pageData)
+  );
 }
 
 function matchesStatusFilter(
@@ -74,21 +131,67 @@ function buildSearchText(
     .toLowerCase();
 }
 
-export function DataSourcesPage() {
+export function DataSourcesPage({
+  initialData = fallbackPageData,
+  createDemoDataSourceAction,
+  syncDataSourceAction,
+  createSemanticModelFromDatasetAction,
+}: DataSourcesPageProps) {
+  const router = useRouter();
   const { toast } = useToast();
-  const [sources, setSources] = useState(mockDataSources);
+  const [sources, setSources] = useState(initialData.sources);
+  const [datasets, setDatasets] = useState(initialData.datasets);
+  const [columnsByDatasetId, setColumnsByDatasetId] = useState(
+    initialData.columnsByDatasetId
+  );
+  const [issues, setIssues] = useState(initialData.issues);
+  const [syncRuns, setSyncRuns] = useState(initialData.syncRuns);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<DataSourceStatusFilter>("all");
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(
-    mockDataSources[0]?.id ?? null
+    initialData.sources[0]?.id ?? null
   );
   const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(
-    mockDatasets.find((dataset) => dataset.sourceId === mockDataSources[0]?.id)?.id ?? null
+    firstDatasetForSource(initialData.datasets, initialData.sources[0]?.id ?? null)
   );
   const [csvDialogOpen, setCsvDialogOpen] = useState(false);
   const [connectorDialogOpen, setConnectorDialogOpen] = useState(false);
+  const [uploadingCsv, setUploadingCsv] = useState(false);
+  const [syncingSourceId, setSyncingSourceId] = useState<string | null>(null);
+  const [creatingDemo, setCreatingDemo] = useState(false);
+  const [creatingSemanticModel, setCreatingSemanticModel] = useState(false);
 
-  const datasetsBySource = useMemo(() => buildDatasetMap(mockDatasets), []);
+  const workspaceId = initialData.workspaceId;
+
+  function applyPageData(pageData: DataSourcesPageData) {
+    setSources(pageData.sources);
+    setDatasets(pageData.datasets);
+    setColumnsByDatasetId(pageData.columnsByDatasetId);
+    setIssues(pageData.issues);
+    setSyncRuns(pageData.syncRuns);
+    setSelectedSourceId((currentSourceId) => {
+      if (currentSourceId && pageData.sources.some((source) => source.id === currentSourceId)) {
+        return currentSourceId;
+      }
+      return pageData.sources[0]?.id ?? null;
+    });
+    setSelectedDatasetId((currentDatasetId) => {
+      if (
+        currentDatasetId &&
+        pageData.datasets.some((dataset) => dataset.id === currentDatasetId)
+      ) {
+        return currentDatasetId;
+      }
+      return firstDatasetForSource(pageData.datasets, pageData.sources[0]?.id ?? null);
+    });
+  }
+
+  useEffect(() => {
+    applyPageData(initialData);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialData]);
+
+  const datasetsBySource = useMemo(() => buildDatasetMap(datasets), [datasets]);
 
   const filteredSources = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -150,19 +253,43 @@ export function DataSourcesPage() {
     selectedSourceDatasets[0] ??
     null;
 
-  const selectedColumns = selectedDataset ? datasetColumns[selectedDataset.id] ?? [] : [];
+  const selectedColumns = selectedDataset
+    ? columnsByDatasetId[selectedDataset.id] ?? []
+    : [];
   const selectedIssues = selectedSource
-    ? dataSourceIssues.filter((issue) => issue.sourceId === selectedSource.id)
+    ? issues.filter((issue) => issue.sourceId === selectedSource.id)
     : [];
   const selectedSyncRuns = selectedSource
-    ? mockSyncRuns.filter((run) => run.sourceId === selectedSource.id)
+    ? syncRuns.filter((run) => run.sourceId === selectedSource.id)
     : [];
 
-  function handleSyncNow() {
+  async function handleSyncNow() {
     if (!selectedSource) {
       return;
     }
 
+    if (!workspaceId || !syncDataSourceAction) {
+      setSources((currentSources) =>
+        currentSources.map((source) =>
+          source.id === selectedSource.id
+            ? {
+                ...source,
+                status: "syncing",
+                syncStatus: "syncing",
+                lastSyncedAt: new Date().toISOString(),
+              }
+            : source
+        )
+      );
+
+      toast({
+        title: "Mock sync started",
+        description: `${selectedSource.name} is running a simulated metadata refresh.`,
+      });
+      return;
+    }
+
+    setSyncingSourceId(selectedSource.id);
     setSources((currentSources) =>
       currentSources.map((source) =>
         source.id === selectedSource.id
@@ -170,24 +297,72 @@ export function DataSourcesPage() {
               ...source,
               status: "syncing",
               syncStatus: "syncing",
-              lastSyncedAt: "2026-05-15T15:00:00-07:00",
+              lastSyncedAt: new Date().toISOString(),
             }
           : source
       )
     );
 
+    const result = await syncDataSourceAction({
+      workspaceId,
+      dataSourceId: selectedSource.id,
+    });
+    setSyncingSourceId(null);
+
+    if (!result.ok) {
+      toast({
+        title: "Sync failed",
+        description: result.error,
+      });
+      router.refresh();
+      return;
+    }
+
+    if (hasPageData(result.data)) {
+      applyPageData(result.data.pageData);
+    }
+    router.refresh();
     toast({
-      title: "Mock sync started",
-      description: `${selectedSource.name} is running a simulated metadata refresh.`,
+      title: "Sync complete",
+      description: `${selectedSource.name} metadata was refreshed.`,
     });
   }
 
-  function handleCreateSemanticModel() {
+  async function handleCreateSemanticModel() {
+    if (!selectedDataset) {
+      return;
+    }
+
+    if (!workspaceId || !createSemanticModelFromDatasetAction) {
+      const subject = selectedDataset.displayName ?? selectedSource?.name ?? "Selected dataset";
+      toast({
+        title: "Semantic model draft created",
+        description: `${subject} is ready for review in the semantic layer workspace.`,
+      });
+      return;
+    }
+
+    setCreatingSemanticModel(true);
+    const result = await createSemanticModelFromDatasetAction({
+      workspaceId,
+      datasetId: selectedDataset.id,
+    });
+    setCreatingSemanticModel(false);
+
+    if (!result.ok) {
+      toast({
+        title: "Semantic model failed",
+        description: result.error,
+      });
+      return;
+    }
+
     const subject = selectedDataset?.displayName ?? selectedSource?.name ?? "Selected dataset";
     toast({
-      title: "Semantic model draft created",
+      title: "Semantic model created",
       description: `${subject} is ready for review in the semantic layer workspace.`,
     });
+    router.push("/app/semantic-layer");
   }
 
   function handleApplySuggestion(suggestion: SemanticSuggestion) {
@@ -197,35 +372,104 @@ export function DataSourcesPage() {
     });
   }
 
-  function handleConnect(connector: ConnectorGalleryItem) {
+  async function handleConnect(connector: ConnectorGalleryItem) {
+    if (connector.id === "connector-csv") {
+      setConnectorDialogOpen(false);
+      setCsvDialogOpen(true);
+      return;
+    }
+
+    if (connector.id === "connector-demo-saas") {
+      if (!workspaceId || !createDemoDataSourceAction) {
+        toast({
+          title: "Demo source selected",
+          description: "The demo connector is available once a workspace is loaded.",
+        });
+        setConnectorDialogOpen(false);
+        return;
+      }
+
+      setCreatingDemo(true);
+      const result = await createDemoDataSourceAction({ workspaceId });
+      setCreatingDemo(false);
+      setConnectorDialogOpen(false);
+
+      if (!result.ok) {
+        toast({
+          title: "Demo source failed",
+          description: result.error,
+        });
+        return;
+      }
+
+      if (hasPageData(result.data)) {
+        applyPageData(result.data.pageData);
+      }
+      router.refresh();
+      toast({
+        title: "Demo source connected",
+        description: "Demo SaaS datasets are ready for schema inspection.",
+      });
+      return;
+    }
+
     toast({
       title:
         connector.availability === "connected"
           ? `${connector.name} reconnect flow opened`
           : `${connector.name} connector selected`,
-      description: "This is a mock connector gallery. No backend connection was created.",
+      description: "This connector is mocked for now. Demo and CSV flows use the backend.",
     });
     setConnectorDialogOpen(false);
   }
 
-  function handleCsvUpload(fileName: string) {
-    setSources((currentSources) =>
-      currentSources.map((source) =>
-        source.id === "source-csv-board-metrics"
-          ? {
-              ...source,
-              status: "syncing",
-              syncStatus: "syncing",
-              lastSyncedAt: "2026-05-15T15:00:00-07:00",
-            }
-          : source
-      )
-    );
+  async function handleCsvUpload(file: File) {
+    if (!workspaceId) {
+      toast({
+        title: "Workspace required",
+        description: "Sign in and select a workspace before uploading CSV files.",
+      });
+      return;
+    }
 
-    toast({
-      title: "CSV profiling queued",
-      description: `${fileName} will be profiled with mock schema and semantic suggestions.`,
-    });
+    setUploadingCsv(true);
+    const formData = new FormData();
+    formData.set("workspaceId", workspaceId);
+    formData.set("file", file);
+
+    try {
+      const response = await fetch("/api/data-sources/upload-csv", {
+        method: "POST",
+        body: formData,
+      });
+      const payload = (await response.json()) as {
+        message?: string;
+        pageData?: DataSourcesPageData;
+        dataset?: { display_name?: string; displayName?: string };
+      };
+
+      if (!response.ok) {
+        throw new Error(payload.message ?? "CSV upload failed.");
+      }
+
+      if (payload.pageData) {
+        applyPageData(payload.pageData);
+      }
+
+      setCsvDialogOpen(false);
+      router.refresh();
+      toast({
+        title: "CSV profiled",
+        description: `${file.name} was uploaded and profiled.`,
+      });
+    } catch (error) {
+      toast({
+        title: "CSV upload failed",
+        description: error instanceof Error ? error.message : "CSV upload failed.",
+      });
+    } finally {
+      setUploadingCsv(false);
+    }
   }
 
   return (
@@ -245,11 +489,14 @@ export function DataSourcesPage() {
             type="button"
             variant="outline"
             onClick={handleSyncNow}
-            disabled={!selectedSource}
+            disabled={!selectedSource || Boolean(syncingSourceId)}
             className="gap-2"
           >
-            <RefreshCw className="h-4 w-4" aria-hidden="true" />
-            Sync now
+            <RefreshCw
+              className={`h-4 w-4 ${syncingSourceId ? "animate-spin" : ""}`}
+              aria-hidden="true"
+            />
+            {syncingSourceId ? "Syncing" : "Sync now"}
           </Button>
           <Button
             type="button"
@@ -263,6 +510,7 @@ export function DataSourcesPage() {
           <Button
             type="button"
             onClick={() => setConnectorDialogOpen(true)}
+            disabled={creatingDemo}
             className="gap-2"
           >
             <PlugZap className="h-4 w-4" aria-hidden="true" />
@@ -273,8 +521,8 @@ export function DataSourcesPage() {
 
       <DataSourceSummaryCards
         sources={sources}
-        datasets={mockDatasets}
-        issues={dataSourceIssues}
+        datasets={datasets}
+        issues={issues}
       />
 
       <DataSourceToolbar
@@ -299,6 +547,7 @@ export function DataSourcesPage() {
             sourceName={selectedSource?.name ?? null}
             onSelectDataset={setSelectedDatasetId}
             onCreateSemanticModel={handleCreateSemanticModel}
+            creatingSemanticModel={creatingSemanticModel}
           />
           <SyncHistoryTable syncRuns={selectedSyncRuns} />
         </div>
@@ -310,6 +559,7 @@ export function DataSourcesPage() {
           issues={selectedIssues}
           onApplySuggestion={handleApplySuggestion}
           onCreateSemanticModel={handleCreateSemanticModel}
+          creatingSemanticModel={creatingSemanticModel}
         />
       </div>
 
@@ -317,6 +567,7 @@ export function DataSourcesPage() {
         open={csvDialogOpen}
         onOpenChange={setCsvDialogOpen}
         onUpload={handleCsvUpload}
+        uploading={uploadingCsv}
       />
       <ConnectorGalleryDialog
         open={connectorDialogOpen}
