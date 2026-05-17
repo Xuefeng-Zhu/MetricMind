@@ -33,10 +33,11 @@ function getOAuthErrorMessage(error: string) {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { setUser, setSession } = useAuthStore();
+  const { user, setUser, setSession } = useAuthStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [keepSignedIn, setKeepSignedIn] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
@@ -49,6 +50,12 @@ export default function LoginPage() {
     url.searchParams.delete("error");
     window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
   }, []);
+
+  useEffect(() => {
+    if (user && !isSubmitting) {
+      router.replace("/app");
+    }
+  }, [isSubmitting, router, user]);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -78,6 +85,7 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           accessToken: data.accessToken,
+          keepSignedIn,
           refreshToken: data.refreshToken,
         }),
       });
@@ -92,6 +100,8 @@ export default function LoginPage() {
       await bootstrapWorkspaceContext();
       router.push("/app");
     } catch (err) {
+      setUser(null);
+      setSession(null);
       setError(err instanceof Error ? err.message : "Unable to log in.");
     } finally {
       setIsSubmitting(false);
@@ -170,7 +180,7 @@ export default function LoginPage() {
               variant="outline"
               className="w-full justify-center gap-3"
             >
-              <a href="/api/auth/oauth/google">
+              <a href="/api/auth/oauth/google?keepSignedIn=true">
                 <svg className="h-5 w-5" viewBox="0 0 24 24">
                   <path
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -191,19 +201,6 @@ export default function LoginPage() {
                 </svg>
                 Continue with Google
               </a>
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-center gap-3"
-              type="button"
-            >
-              <svg className="h-5 w-5" viewBox="0 0 23 23">
-                <path fill="#f35325" d="M1 1h10v10H1z" />
-                <path fill="#81bc06" d="M12 1h10v10H12z" />
-                <path fill="#05a6f0" d="M1 12h10v10H1z" />
-                <path fill="#ffba08" d="M12 12h10v10H12z" />
-              </svg>
-              Continue with Microsoft
             </Button>
           </div>
 
@@ -255,6 +252,22 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 aria-describedby={error ? "login-error" : undefined}
               />
+            </div>
+
+            <div className="flex items-center gap-3 rounded-md border border-gray-200 bg-gray-50 px-3 py-2">
+              <input
+                id="keep-signed-in"
+                type="checkbox"
+                checked={keepSignedIn}
+                onChange={(event) => setKeepSignedIn(event.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <Label
+                htmlFor="keep-signed-in"
+                className="cursor-pointer text-sm font-normal text-gray-700"
+              >
+                Keep me signed in
+              </Label>
             </div>
 
             <Button type="submit" className="w-full" disabled={isSubmitting}>

@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import {
+  INSFORGE_ACCESS_COOKIE,
+  INSFORGE_KEEP_SIGNED_IN_COOKIE,
+  INSFORGE_REFRESH_COOKIE,
+} from "@/lib/insforge/auth-cookies";
+
 const mockGetSession = vi.hoisted(() => vi.fn());
 const mockCreateClient = vi.hoisted(() =>
   vi.fn(() => ({
@@ -23,7 +29,15 @@ vi.mock("@/lib/workspaces/ensure-default-workspace", () => ({
   ensureDefaultWorkspace: mockEnsureDefaultWorkspace,
 }));
 
-import { GET } from "./route";
+import { DELETE, GET, POST } from "./route";
+
+function createSessionRequest(body: unknown) {
+  return new Request("http://localhost:3000/api/auth/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }) as any;
+}
 
 describe("GET /api/auth/session", () => {
   beforeEach(() => {
@@ -68,5 +82,61 @@ describe("GET /api/auth/session", () => {
       expect.any(Object),
       "profile-123"
     );
+  });
+});
+
+describe("POST /api/auth/session", () => {
+  it("stores persistent session cookies by default", async () => {
+    const response = await POST(
+      createSessionRequest({
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+      })
+    );
+    const setCookie = response.headers.get("set-cookie") ?? "";
+
+    expect(response.status).toBe(200);
+    expect(setCookie).toContain(`${INSFORGE_ACCESS_COOKIE}=access-token`);
+    expect(setCookie).toContain(`${INSFORGE_REFRESH_COOKIE}=refresh-token`);
+    expect(setCookie).toContain(`${INSFORGE_KEEP_SIGNED_IN_COOKIE}=true`);
+    expect(setCookie).toMatch(/Max-Age=900/i);
+    expect(setCookie).toMatch(/Max-Age=604800/i);
+  });
+
+  it("stores session cookies when keep signed in is disabled", async () => {
+    const response = await POST(
+      createSessionRequest({
+        accessToken: "access-token",
+        keepSignedIn: false,
+        refreshToken: "refresh-token",
+      })
+    );
+    const setCookie = response.headers.get("set-cookie") ?? "";
+
+    expect(response.status).toBe(200);
+    expect(setCookie).toContain(`${INSFORGE_ACCESS_COOKIE}=access-token`);
+    expect(setCookie).toContain(`${INSFORGE_REFRESH_COOKIE}=refresh-token`);
+    expect(setCookie).toContain(`${INSFORGE_KEEP_SIGNED_IN_COOKIE}=false`);
+    expect(setCookie).not.toMatch(/Max-Age=/i);
+  });
+
+  it("rejects missing tokens", async () => {
+    const response = await POST(createSessionRequest({ accessToken: "token" }));
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("Missing InsForge session tokens.");
+  });
+});
+
+describe("DELETE /api/auth/session", () => {
+  it("clears auth and keep-signed-in cookies", async () => {
+    const response = await DELETE();
+    const setCookie = response.headers.get("set-cookie") ?? "";
+
+    expect(setCookie).toContain(`${INSFORGE_ACCESS_COOKIE}=`);
+    expect(setCookie).toContain(`${INSFORGE_REFRESH_COOKIE}=`);
+    expect(setCookie).toContain(`${INSFORGE_KEEP_SIGNED_IN_COOKIE}=`);
+    expect(setCookie).toMatch(/Max-Age=0/i);
   });
 });

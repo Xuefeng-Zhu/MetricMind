@@ -3,9 +3,11 @@ import type { ResponseCookie } from "next/dist/compiled/@edge-runtime/cookies";
 
 import {
   accessCookieMaxAge,
-  authCookieOptions,
+  authCookieOptionsForMaxAge,
   INSFORGE_ACCESS_COOKIE,
+  INSFORGE_KEEP_SIGNED_IN_COOKIE,
   INSFORGE_REFRESH_COOKIE,
+  readKeepSignedInCookie,
   refreshCookieMaxAge,
 } from "./auth-cookies";
 import { createCompatClient } from "./compat";
@@ -18,22 +20,21 @@ type MutableCookieStore = ReturnType<typeof cookies> & {
 
 function setServerAuthCookies(
   session: NonNullable<InsForgeAuthSessionResponse>,
-  fallbackRefreshToken: string
+  fallbackRefreshToken: string,
+  keepSignedIn: boolean
 ) {
   if (!session.accessToken) return;
 
   try {
     const cookieStore = cookies() as MutableCookieStore;
     cookieStore.set(INSFORGE_ACCESS_COOKIE, session.accessToken, {
-      ...authCookieOptions,
-      maxAge: accessCookieMaxAge,
+      ...authCookieOptionsForMaxAge(accessCookieMaxAge, keepSignedIn),
     });
     cookieStore.set(
       INSFORGE_REFRESH_COOKIE,
       session.refreshToken ?? fallbackRefreshToken,
       {
-        ...authCookieOptions,
-        maxAge: refreshCookieMaxAge,
+        ...authCookieOptionsForMaxAge(refreshCookieMaxAge, keepSignedIn),
       }
     );
   } catch {
@@ -46,6 +47,9 @@ export function createClient() {
   const cookieStore = cookies();
   const accessToken = cookieStore.get(INSFORGE_ACCESS_COOKIE)?.value;
   const refreshToken = cookieStore.get(INSFORGE_REFRESH_COOKIE)?.value;
+  const keepSignedIn = readKeepSignedInCookie(
+    cookieStore.get(INSFORGE_KEEP_SIGNED_IN_COOKIE)?.value
+  );
   const client = createCompatClient({
     baseUrl: getInsForgeUrl(),
     anonKey: getInsForgeAnonKey(),
@@ -66,7 +70,7 @@ export function createClient() {
 
         if (error || !data?.accessToken || !data.user) return null;
 
-        setServerAuthCookies(data, refreshToken);
+        setServerAuthCookies(data, refreshToken, keepSignedIn);
         return data;
       } catch {
         return null;

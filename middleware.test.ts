@@ -24,6 +24,7 @@ vi.mock("next/server", () => ({
 
 import {
   INSFORGE_ACCESS_COOKIE,
+  INSFORGE_KEEP_SIGNED_IN_COOKIE,
   INSFORGE_REFRESH_COOKIE,
 } from "./lib/insforge/auth-cookies";
 import { middleware, config } from "./middleware";
@@ -150,6 +151,36 @@ describe("Auth Middleware", () => {
 
       expect(mockRedirect).not.toHaveBeenCalled();
       expect(mockNext).toHaveBeenCalled();
+    });
+
+    it("should refresh with session cookies when keep signed in is disabled", async () => {
+      vi.mocked(fetch)
+        .mockResolvedValueOnce(new Response("{}", { status: 401 }))
+        .mockResolvedValueOnce(
+          Response.json({
+            accessToken: "new-access-token",
+            refreshToken: "new-refresh-token",
+            user: { id: "user-123" },
+          })
+        );
+
+      const request = createMockRequest("/app", {
+        [INSFORGE_ACCESS_COOKIE]: "expired-access-token",
+        [INSFORGE_REFRESH_COOKIE]: "refresh-token",
+        [INSFORGE_KEEP_SIGNED_IN_COOKIE]: "false",
+      });
+      const response = await middleware(request);
+
+      expect(response.cookies.set).toHaveBeenCalledWith(
+        INSFORGE_ACCESS_COOKIE,
+        "new-access-token",
+        expect.not.objectContaining({ maxAge: expect.any(Number) })
+      );
+      expect(response.cookies.set).toHaveBeenCalledWith(
+        INSFORGE_REFRESH_COOKIE,
+        "new-refresh-token",
+        expect.not.objectContaining({ maxAge: expect.any(Number) })
+      );
     });
 
     it("should redirect instead of throwing when the user fetch fails", async () => {

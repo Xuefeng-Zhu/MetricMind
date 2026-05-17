@@ -2,8 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import {
   authCookieOptions,
+  authCookieOptionsForMaxAge,
+  INSFORGE_KEEP_SIGNED_IN_COOKIE,
   INSFORGE_OAUTH_VERIFIER_COOKIE,
   oauthVerifierCookieMaxAge,
+  readKeepSignedInCookie,
 } from "@/lib/insforge/auth-cookies";
 import { createClient } from "@/lib/insforge/server";
 
@@ -37,10 +40,16 @@ export async function GET(
     return redirectToLogin(request, "oauth_init_failed");
   }
 
+  const keepSignedIn = readKeepSignedInCookie(
+    request.nextUrl.searchParams.get("keepSignedIn")
+  );
   const response = NextResponse.redirect(data.url);
   response.cookies.set(INSFORGE_OAUTH_VERIFIER_COOKIE, data.codeVerifier, {
     ...authCookieOptions,
     maxAge: oauthVerifierCookieMaxAge,
+  });
+  response.cookies.set(INSFORGE_KEEP_SIGNED_IN_COOKIE, String(keepSignedIn), {
+    ...authCookieOptionsForMaxAge(oauthVerifierCookieMaxAge, keepSignedIn),
   });
 
   return response;

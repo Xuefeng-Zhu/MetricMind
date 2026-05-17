@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { INSFORGE_OAUTH_VERIFIER_COOKIE } from "@/lib/insforge/auth-cookies";
+import {
+  INSFORGE_KEEP_SIGNED_IN_COOKIE,
+  INSFORGE_OAUTH_VERIFIER_COOKIE,
+} from "@/lib/insforge/auth-cookies";
 
 const mockSignInWithOAuth = vi.hoisted(() => vi.fn());
 const mockCreateClient = vi.hoisted(() =>
@@ -53,6 +56,30 @@ describe("OAuth initiation route", () => {
     );
     expect(response.headers.get("set-cookie")).toContain(
       INSFORGE_OAUTH_VERIFIER_COOKIE
+    );
+    expect(response.headers.get("set-cookie")).toContain(
+      `${INSFORGE_KEEP_SIGNED_IN_COOKIE}=true`
+    );
+  });
+
+  it("stores the keep-signed-in OAuth preference", async () => {
+    mockSignInWithOAuth.mockResolvedValue({
+      data: {
+        url: "https://accounts.google.com/o/oauth2/v2/auth",
+        codeVerifier: "verifier-123",
+      },
+      error: null,
+    });
+
+    const response = await GET(
+      createRequest("/api/auth/oauth/google?keepSignedIn=false"),
+      {
+        params: { provider: "google" },
+      }
+    );
+
+    expect(response.headers.get("set-cookie")).toContain(
+      `${INSFORGE_KEEP_SIGNED_IN_COOKIE}=false`
     );
   });
 

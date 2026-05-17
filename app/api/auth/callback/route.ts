@@ -4,9 +4,12 @@ import { ensureProfile } from "@/lib/auth/ensure-profile";
 import {
   accessCookieMaxAge,
   authCookieOptions,
+  authCookieOptionsForMaxAge,
   INSFORGE_ACCESS_COOKIE,
+  INSFORGE_KEEP_SIGNED_IN_COOKIE,
   INSFORGE_OAUTH_VERIFIER_COOKIE,
   INSFORGE_REFRESH_COOKIE,
+  readKeepSignedInCookie,
   refreshCookieMaxAge,
 } from "@/lib/insforge/auth-cookies";
 import { createClient } from "@/lib/insforge/server";
@@ -47,6 +50,9 @@ export async function GET(request: NextRequest) {
     return redirectToLogin(request, "oauth_verifier_missing");
   }
 
+  const keepSignedIn = readKeepSignedInCookie(
+    request.cookies.get(INSFORGE_KEEP_SIGNED_IN_COOKIE)?.value
+  );
   const insforge = createClient();
   const { data, error } = await insforge.auth.exchangeOAuthCode(code, codeVerifier);
 
@@ -69,12 +75,13 @@ export async function GET(request: NextRequest) {
 
   const response = NextResponse.redirect(new URL("/app", request.url));
   response.cookies.set(INSFORGE_ACCESS_COOKIE, data.accessToken, {
-    ...authCookieOptions,
-    maxAge: accessCookieMaxAge,
+    ...authCookieOptionsForMaxAge(accessCookieMaxAge, keepSignedIn),
   });
   response.cookies.set(INSFORGE_REFRESH_COOKIE, data.refreshToken, {
-    ...authCookieOptions,
-    maxAge: refreshCookieMaxAge,
+    ...authCookieOptionsForMaxAge(refreshCookieMaxAge, keepSignedIn),
+  });
+  response.cookies.set(INSFORGE_KEEP_SIGNED_IN_COOKIE, String(keepSignedIn), {
+    ...authCookieOptionsForMaxAge(refreshCookieMaxAge, keepSignedIn),
   });
   clearOAuthVerifier(response);
 

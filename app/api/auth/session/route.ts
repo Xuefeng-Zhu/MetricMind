@@ -4,8 +4,11 @@ import { ensureProfile } from "@/lib/auth/ensure-profile";
 import {
   accessCookieMaxAge,
   authCookieOptions,
+  authCookieOptionsForMaxAge,
   INSFORGE_ACCESS_COOKIE,
+  INSFORGE_KEEP_SIGNED_IN_COOKIE,
   INSFORGE_REFRESH_COOKIE,
+  readKeepSignedInCookie,
   refreshCookieMaxAge,
 } from "@/lib/insforge/auth-cookies";
 import { createClient } from "@/lib/insforge/server";
@@ -40,6 +43,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as {
     accessToken?: string;
+    keepSignedIn?: boolean;
     refreshToken?: string;
   } | null;
 
@@ -50,14 +54,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const keepSignedIn = readKeepSignedInCookie(String(body.keepSignedIn));
   const response = NextResponse.json({ ok: true });
   response.cookies.set(INSFORGE_ACCESS_COOKIE, body.accessToken, {
-    ...authCookieOptions,
-    maxAge: accessCookieMaxAge,
+    ...authCookieOptionsForMaxAge(accessCookieMaxAge, keepSignedIn),
   });
   response.cookies.set(INSFORGE_REFRESH_COOKIE, body.refreshToken, {
-    ...authCookieOptions,
-    maxAge: refreshCookieMaxAge,
+    ...authCookieOptionsForMaxAge(refreshCookieMaxAge, keepSignedIn),
+  });
+  response.cookies.set(INSFORGE_KEEP_SIGNED_IN_COOKIE, String(keepSignedIn), {
+    ...authCookieOptionsForMaxAge(refreshCookieMaxAge, keepSignedIn),
   });
 
   return response;
@@ -70,6 +76,10 @@ export async function DELETE() {
     maxAge: 0,
   });
   response.cookies.set(INSFORGE_REFRESH_COOKIE, "", {
+    ...authCookieOptions,
+    maxAge: 0,
+  });
+  response.cookies.set(INSFORGE_KEEP_SIGNED_IN_COOKIE, "", {
     ...authCookieOptions,
     maxAge: 0,
   });
