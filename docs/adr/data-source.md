@@ -153,6 +153,11 @@ Trade-offs:
 - When changing table columns in migrations, update repository mappers, service types, docs, and tests in the same branch.
 - Quote App Router paths in zsh when running commands against route groups, for example `'app/(protected)/app/data-sources/page.tsx'`.
 
+## Related ADRs
+
+- [ADR 000: Current System Boundary And Runtime Shape](system-design.md)
+- [ADR 001: Govern Analytics Through SemanticQuery Compilation](semantic-layer.md)
+
 ## Open Questions
 
 - TODO: verify the intended encryption implementation behind `data_source_credentials.encrypted_payload`.

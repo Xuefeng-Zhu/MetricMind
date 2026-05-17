@@ -159,6 +159,11 @@ Trade-offs:
 - When adding a new metric calculation type, update the migration, loader, resolver, compiler, validator, tests, and docs together.
 - Keep demo/backfill semantic definitions deterministic so tests and screenshots stay stable.
 
+## Related ADRs
+
+- [ADR 000: Current System Boundary And Runtime Shape](system-design.md)
+- [ADR 002: Manage Data Sources Through Server-Side Lifecycle Services](data-source.md)
+
 ## Open Questions
 
 - TODO: verify whether semantic definitions should become exportable/importable artifacts in addition to database rows.
