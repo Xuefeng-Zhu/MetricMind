@@ -6,6 +6,7 @@ This repository has application code and SQL migrations, but no checked-in deplo
 
 Present:
 
+- `README.md` and docs under `docs/`.
 - `package.json` scripts for dev, build, start, lint, and tests.
 - `next.config.mjs`.
 - Raw SQL migrations in `migrations/`.
