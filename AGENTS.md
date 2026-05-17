@@ -57,9 +57,10 @@ question -> AI SemanticQuery JSON -> semantic validator/compiler -> read-only SQ
 - `migrations/`: Raw SQL migrations for app schema, demo data, RLS, semantic registry, and data source backend.
 - `__tests__/`: Cross-cutting smoke/integration tests.
 - `docs/`: Contributor and agent documentation.
+- `README.md`: Human-facing project overview, quick start, commands, and doc index.
 - `.kiro/specs/`: Historical product/spec documents. Treat these as context, not guaranteed-current implementation docs.
 
-There is currently no root `README.md` and no checked-in `.github/` CI workflow.
+There is currently no checked-in `.github/` CI workflow.
 
 ## Important Commands
 
@@ -297,6 +298,7 @@ See [docs/release.md](docs/release.md).
 ## Supporting Docs
 
 - [Architecture](docs/architecture.md)
+- [Architecture decisions](docs/adr/overview.md)
 - [Product overview](docs/product-overview.md)
 - [Development](docs/development.md)
 - [Testing](docs/testing.md)
