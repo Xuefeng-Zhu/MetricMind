@@ -1,6 +1,7 @@
 import type { Role } from "@/lib/rbac/rbac-middleware";
 
-export type DataSourceKind = "csv" | "demo";
+export type ExternalDataSourceKind = "snowflake" | "bigquery" | "postgres" | "motherduck";
+export type DataSourceKind = "csv" | "demo" | ExternalDataSourceKind;
 export type DataSourceLifecycleStatus = "processing" | "ready" | "error";
 export type DataSourceHealthStatus = "healthy" | "warning" | "syncing" | "error";
 export type DataSourceSyncStatus = "synced" | "syncing" | "attention" | "paused";
@@ -45,6 +46,7 @@ export interface MetricMindDataSource {
 
 export interface ConnectorGalleryItem {
   id: string;
+  type: DataSourceKind;
   name: string;
   provider: string;
   category: string;
@@ -52,6 +54,77 @@ export interface ConnectorGalleryItem {
   setupTime: string;
   availability: "connected" | "available" | "beta" | "coming_soon";
   recommendedFor: string;
+}
+
+export interface SnowflakeConnectorInput {
+  type: "snowflake";
+  workspaceId: string;
+  name: string;
+  account: string;
+  username: string;
+  password: string;
+  warehouse: string;
+  database: string;
+  schema: string;
+  role?: string;
+}
+
+export interface BigQueryConnectorInput {
+  type: "bigquery";
+  workspaceId: string;
+  name: string;
+  projectId: string;
+  datasetId: string;
+  serviceAccountJson: string;
+  location?: string;
+}
+
+export interface PostgresConnectorInput {
+  type: "postgres";
+  workspaceId: string;
+  name: string;
+  host: string;
+  port: number;
+  database: string;
+  schema: string;
+  username: string;
+  password: string;
+  sslMode: "require" | "disable";
+}
+
+export interface MotherDuckConnectorInput {
+  type: "motherduck";
+  workspaceId: string;
+  name: string;
+  token: string;
+  database: string;
+  schema: string;
+  host?: string;
+}
+
+export type ExternalConnectorInput =
+  | SnowflakeConnectorInput
+  | BigQueryConnectorInput
+  | PostgresConnectorInput
+  | MotherDuckConnectorInput;
+
+export type StoredExternalConnectorConfig = ExternalConnectorInput extends infer T
+  ? T extends ExternalConnectorInput
+    ? Omit<T, "workspaceId">
+    : never
+  : never;
+
+export interface ExternalConnectorTestResult {
+  message: string;
+  datasetCount: number;
+  warnings: string[];
+}
+
+export interface ExternalConnectorConnectResult {
+  dataSource: unknown;
+  datasetCount: number;
+  pageData: DataSourcesPageData;
+  warnings: string[];
 }
 
 export interface ParsedCsv {

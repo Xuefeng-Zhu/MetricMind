@@ -1,6 +1,7 @@
 import type { InsForgeDatabaseClient } from "@/lib/insforge/types";
 import type {
   DataSourceIssue,
+  DataSourceKind,
   DatasetColumn,
   DatasetProfile,
   InferredColumn,
@@ -18,7 +19,7 @@ interface DataSourceRow {
   id: string;
   workspace_id: string;
   name: string;
-  type: "csv" | "demo";
+  type: DataSourceKind;
   status: "processing" | "ready" | "error";
   row_count: number | null;
   file_size_bytes: number | null;
@@ -35,6 +36,17 @@ interface DataSourceRow {
   last_synced_at?: string | null;
   next_sync_at?: string | null;
   metadata?: Record<string, unknown> | null;
+}
+
+interface CredentialRow {
+  id: string;
+  workspace_id: string;
+  data_source_id: string;
+  encrypted_payload: unknown;
+  redacted_summary: Record<string, unknown>;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
 }
 
 interface DatasetRow {
@@ -123,7 +135,7 @@ interface SyncRunRow {
 export interface CreateDataSourceInput {
   workspaceId: string;
   name: string;
-  type: "csv" | "demo";
+  type: DataSourceKind;
   status: "processing" | "ready" | "error";
   rowCount: number;
   fileSizeBytes?: number | null;
@@ -151,6 +163,21 @@ export interface DataSourcesRepository {
   }>;
   createDataSource(input: CreateDataSourceInput): Promise<DataSourceRow>;
   updateDataSource(id: string, patch: Partial<DataSourceRow>): Promise<DataSourceRow>;
+  upsertDataSourceCredential(input: {
+    workspaceId: string;
+    dataSourceId: string;
+    encryptedPayload: unknown;
+    redactedSummary: Record<string, unknown>;
+    createdBy: string;
+  }): Promise<CredentialRow>;
+  getDataSourceCredential(
+    workspaceId: string,
+    dataSourceId: string
+  ): Promise<CredentialRow>;
+  replaceDatasetsForSource(input: {
+    workspaceId: string;
+    dataSourceId: string;
+  }): Promise<void>;
   createUploadedFile(input: {
     workspaceId: string;
     dataSourceId: string;
@@ -193,6 +220,20 @@ export interface DataSourcesRepository {
     profile: DatasetProfile;
     suggestions: SemanticSuggestion[];
   }): Promise<DatasetProfileRow>;
+  createDataSourceIssue(input: {
+    workspaceId: string;
+    dataSourceId: string;
+    datasetId?: string | null;
+    severity: "low" | "medium" | "high" | "critical";
+    category: string;
+    title: string;
+    description: string;
+  }): Promise<IssueRow>;
+  deleteDataSourceIssuesByCategory(input: {
+    workspaceId: string;
+    dataSourceId: string;
+    category: string;
+  }): Promise<void>;
   createSyncRun(input: {
     workspaceId: string;
     dataSourceId: string;
@@ -590,6 +631,69 @@ export function createDataSourcesRepository(
       return data as DataSourceRow;
     },
 
+    async upsertDataSourceCredential(input) {
+      const existingResult = await insforge
+        .from("data_source_credentials")
+        .select("id")
+        .eq("workspace_id", input.workspaceId)
+        .eq("data_source_id", input.dataSourceId);
+      assertNoError(existingResult.error, "Failed to load data source credentials");
+
+      const existing = asArray<{ id: string }>(existingResult.data)[0];
+      if (existing) {
+        const { data, error } = await insforge
+          .from("data_source_credentials")
+          .update({
+            encrypted_payload: input.encryptedPayload,
+            redacted_summary: input.redactedSummary,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id)
+          .select("*")
+          .single();
+
+        assertNoError(error, "Failed to update data source credentials");
+        return data as CredentialRow;
+      }
+
+      const { data, error } = await insforge
+        .from("data_source_credentials")
+        .insert({
+          workspace_id: input.workspaceId,
+          data_source_id: input.dataSourceId,
+          encrypted_payload: input.encryptedPayload,
+          redacted_summary: input.redactedSummary,
+          created_by: input.createdBy,
+        })
+        .select("*")
+        .single();
+
+      assertNoError(error, "Failed to store data source credentials");
+      return data as CredentialRow;
+    },
+
+    async getDataSourceCredential(workspaceId, dataSourceId) {
+      const { data, error } = await insforge
+        .from("data_source_credentials")
+        .select("*")
+        .eq("workspace_id", workspaceId)
+        .eq("data_source_id", dataSourceId)
+        .single();
+
+      assertNoError(error, "Data source credentials not found");
+      return data as CredentialRow;
+    },
+
+    async replaceDatasetsForSource(input) {
+      const { error } = await insforge
+        .from("datasets")
+        .delete()
+        .eq("workspace_id", input.workspaceId)
+        .eq("data_source_id", input.dataSourceId);
+
+      assertNoError(error, "Failed to replace data source datasets");
+    },
+
     async createUploadedFile(input) {
       const { data, error } = await insforge
         .from("uploaded_files")
@@ -702,6 +806,37 @@ export function createDataSourcesRepository(
 
       assertNoError(error, "Failed to create dataset profile");
       return data as DatasetProfileRow;
+    },
+
+    async createDataSourceIssue(input) {
+      const { data, error } = await insforge
+        .from("data_source_issues")
+        .insert({
+          workspace_id: input.workspaceId,
+          data_source_id: input.dataSourceId,
+          dataset_id: input.datasetId ?? null,
+          severity: input.severity,
+          category: input.category,
+          title: input.title,
+          description: input.description,
+          status: "open",
+        })
+        .select("*")
+        .single();
+
+      assertNoError(error, "Failed to create data source issue");
+      return data as IssueRow;
+    },
+
+    async deleteDataSourceIssuesByCategory(input) {
+      const { error } = await insforge
+        .from("data_source_issues")
+        .delete()
+        .eq("workspace_id", input.workspaceId)
+        .eq("data_source_id", input.dataSourceId)
+        .eq("category", input.category);
+
+      assertNoError(error, "Failed to clear data source issues");
     },
 
     async createSyncRun(input) {

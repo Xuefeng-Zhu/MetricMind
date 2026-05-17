@@ -21,6 +21,9 @@ import type {
   ActionResult,
   ConnectorGalleryItem,
   DataSourcesPageData,
+  ExternalConnectorConnectResult,
+  ExternalConnectorInput,
+  ExternalConnectorTestResult,
   MetricMindDataSource,
   MetricMindDataset,
 } from "@/lib/data-sources/types";
@@ -34,6 +37,12 @@ interface DataSourcesPageProps {
   createDemoDataSourceAction?: (input: {
     workspaceId: string;
   }) => Promise<ActionResult<PageDataActionPayload>>;
+  testExternalDataSourceAction?: (
+    input: ExternalConnectorInput
+  ) => Promise<ActionResult<ExternalConnectorTestResult>>;
+  connectExternalDataSourceAction?: (
+    input: ExternalConnectorInput
+  ) => Promise<ActionResult<ExternalConnectorConnectResult>>;
   syncDataSourceAction?: (input: {
     workspaceId: string;
     dataSourceId: string;
@@ -57,6 +66,7 @@ const emptyPageData: DataSourcesPageData = {
 const workingConnectors: ConnectorGalleryItem[] = [
   {
     id: "connector-csv",
+    type: "csv",
     name: "CSV Upload",
     provider: "File",
     category: "Upload",
@@ -67,6 +77,7 @@ const workingConnectors: ConnectorGalleryItem[] = [
   },
   {
     id: "connector-demo-saas",
+    type: "demo",
     name: "Demo SaaS Dataset",
     provider: "MetricMind",
     category: "Demo",
@@ -74,6 +85,50 @@ const workingConnectors: ConnectorGalleryItem[] = [
     setupTime: "1 min",
     availability: "available",
     recommendedFor: "Evaluation workspaces",
+  },
+  {
+    id: "connector-snowflake",
+    type: "snowflake",
+    name: "Snowflake",
+    provider: "Snowflake",
+    category: "Data Warehouse",
+    description: "Profile tables from a governed Snowflake warehouse and schema.",
+    setupTime: "5 min",
+    availability: "available",
+    recommendedFor: "Revenue warehouses",
+  },
+  {
+    id: "connector-bigquery",
+    type: "bigquery",
+    name: "BigQuery",
+    provider: "Google Cloud",
+    category: "Data Warehouse",
+    description: "Discover BigQuery dataset tables with service-account access.",
+    setupTime: "5 min",
+    availability: "available",
+    recommendedFor: "Cloud analytics",
+  },
+  {
+    id: "connector-postgres",
+    type: "postgres",
+    name: "Postgres",
+    provider: "PostgreSQL",
+    category: "Database",
+    description: "Inspect a read-only Postgres schema for semantic modeling.",
+    setupTime: "4 min",
+    availability: "available",
+    recommendedFor: "Operational replicas",
+  },
+  {
+    id: "connector-motherduck",
+    type: "motherduck",
+    name: "MotherDuck",
+    provider: "MotherDuck",
+    category: "Data Warehouse",
+    description: "Connect through MotherDuck's Postgres endpoint for analytics metadata.",
+    setupTime: "3 min",
+    availability: "available",
+    recommendedFor: "Serverless analytics",
   },
 ];
 
@@ -138,6 +193,8 @@ function buildSearchText(
 export function DataSourcesPage({
   initialData = emptyPageData,
   createDemoDataSourceAction,
+  testExternalDataSourceAction,
+  connectExternalDataSourceAction,
 }: DataSourcesPageProps) {
   const router = useRouter();
   const { toast } = useToast();
@@ -156,6 +213,8 @@ export function DataSourcesPage({
   const [creatingDemo, setCreatingDemo] = useState(false);
 
   const workspaceId = initialData.workspaceId;
+  const canManageExternalSources =
+    initialData.role === "owner" || initialData.role === "admin";
 
   function applyPageData(pageData: DataSourcesPageData) {
     setSources(pageData.sources);
@@ -303,6 +362,29 @@ export function DataSourcesPage({
     }
   }
 
+  async function handleExternalTest(input: ExternalConnectorInput) {
+    if (!testExternalDataSourceAction) {
+      return { ok: false, error: "External connector actions are not available.", status: 500 } as const;
+    }
+    return testExternalDataSourceAction(input);
+  }
+
+  async function handleExternalConnect(input: ExternalConnectorInput) {
+    if (!connectExternalDataSourceAction) {
+      return { ok: false, error: "External connector actions are not available.", status: 500 } as const;
+    }
+    const result = await connectExternalDataSourceAction(input);
+    if (result.ok) {
+      applyPageData(result.data.pageData);
+      router.refresh();
+      toast({
+        title: "Source connected",
+        description: `${input.name} was connected with ${result.data.datasetCount} profiled dataset${result.data.datasetCount === 1 ? "" : "s"}.`,
+      });
+    }
+    return result;
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -371,8 +453,12 @@ export function DataSourcesPage({
       <ConnectorGalleryDialog
         open={connectorDialogOpen}
         connectors={workingConnectors}
+        workspaceId={workspaceId}
+        canManageExternalSources={canManageExternalSources}
         onOpenChange={setConnectorDialogOpen}
         onConnect={handleConnect}
+        onTestExternalConnector={handleExternalTest}
+        onConnectExternalConnector={handleExternalConnect}
       />
     </div>
   );

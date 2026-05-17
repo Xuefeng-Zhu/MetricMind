@@ -34,17 +34,17 @@ Currently implemented:
 - CSV upload through `app/api/data-sources/upload-csv/route.ts`.
 - CSV parsing, schema inference, row normalization, profiling, and semantic suggestions.
 - Dataset rows stored as JSONB in `dataset_rows`.
-- Manual metadata sync records for CSV and demo sources.
+- Manual metadata sync records for CSV/demo sources and metadata refresh for external connectors.
 - Dataset column metadata updates.
-- Semantic model creation from a dataset.
+- Semantic model creation from CSV/demo datasets.
 
 Not currently implemented:
 
-- Real Snowflake, BigQuery, Postgres, Stripe, HubSpot, Segment, Zendesk, or similar external connectors.
+- Stripe, HubSpot, Segment, Zendesk, or similar SaaS connectors.
+- Full row replication or live query execution for Snowflake, BigQuery, Postgres, and MotherDuck connectors.
 - Background job infrastructure for long-running syncs.
 - Binary object storage for uploaded CSV files. Current code stores upload metadata and normalized rows.
-- End-user credential management UI for non-CSV connectors.
-- Verified encryption behavior for `data_source_credentials.encrypted_payload`. TODO: verify before claiming encrypted-at-rest credential support.
+- End-user credential rotation/deletion UI for non-CSV connectors.
 
 ## Current Implementation
 
@@ -58,6 +58,7 @@ Key paths:
 - `lib/data-sources/repository.ts`: database reads/writes and row mapping.
 - `lib/data-sources/connectors/csv-connector.ts`: CSV connector implementation.
 - `lib/data-sources/connectors/demo-connector.ts`: demo connector implementation.
+- `lib/data-sources/connectors/*-connector.ts`: external metadata connector implementations for Snowflake, BigQuery, Postgres, and MotherDuck.
 - `lib/data-sources/csv/`: parser, schema inference, and row normalization.
 - `lib/data-sources/profiling/`: profile generation, readiness score, semantic suggestions.
 - `lib/data-sources/sync/sync-runner.ts`: manual metadata sync bookkeeping for implemented source types.
@@ -105,7 +106,7 @@ Current data-source tables and responsibilities:
 | `dataset_profiles` | Latest dataset profile, sample values, semantic suggestions, readiness score. |
 | `data_source_sync_runs` | Sync run history and status. |
 | `data_source_issues` | Source or dataset issues. |
-| `data_source_credentials` | Isolated credential payload storage for future connector flows. |
+| `data_source_credentials` | App-encrypted credential payload storage plus redacted summaries. |
 
 `dataset_rows` is intentionally an MVP-friendly store for uploaded/demo rows. If the app later moves CSV data into warehouse tables, object storage, or another serving layer, update this ADR and the semantic compiler assumptions together.
 
@@ -116,7 +117,7 @@ Role-sensitive behavior is split between service checks and SQL policies:
 - `viewer`: can read approved/active dataset metadata and rows.
 - `analyst`: can upload CSV files and insert datasets/rows/profiles.
 - `admin` and `owner`: can update/delete sources and manage sync/issue records.
-- Credential insert/update/delete policies are owner/admin-only.
+- Credential select/insert/update/delete policies are owner/admin-only.
 
 The server must still perform explicit route/service checks. RLS is a backstop, not a replacement for clear application-level authorization and useful user-facing errors.
 
@@ -124,6 +125,7 @@ The server must still perform explicit route/service checks. RLS is a backstop, 
 
 - Do not return `data_source_credentials` rows to the browser.
 - Do not print or commit source credentials or local `.env*` values.
+- External connector credentials require `DATA_SOURCE_CREDENTIALS_KEY` and are encrypted before persistence.
 - CSV uploads are limited to 50 MB in `lib/data-sources/service.ts`.
 - The upload route accepts `x-workspace-id`, form `workspaceId`, or query `workspaceId`; workspace membership is resolved server-side before persistence.
 - Uploaded row values are persisted in `dataset_rows.data`; treat CSV content as workspace data, not transient UI-only content.
@@ -136,12 +138,13 @@ Benefits:
 - Ingestion behavior is testable without browser automation.
 - Role and workspace checks stay near persistence.
 - CSV/demo flows share the same dataset/profile/semantic-model concepts.
-- Future connectors can implement the `DataSourceConnector` interface without changing the UI contract.
+- External connectors implement the `DataSourceConnector` interface without changing the progressive UI contract.
 
 Trade-offs:
 
 - JSONB row storage is simple but not a long-term high-scale analytics engine.
 - Synchronous CSV processing keeps the MVP simple but is not ideal for very large files.
+- Synchronous external discovery is intentionally scoped to 50 tables and 25 preview rows per table.
 - The older data-source service path can cause confusion until it is consolidated or removed.
 
 ## Safe-Change Guidelines
@@ -160,7 +163,6 @@ Trade-offs:
 
 ## Open Questions
 
-- TODO: verify the intended encryption implementation behind `data_source_credentials.encrypted_payload`.
 - TODO: verify whether uploads should also persist original files in object storage.
 - TODO: verify the target background-job mechanism for large syncs.
 - TODO: decide whether to retire or merge `lib/data-sources/data-source-service.ts` with the newer lifecycle service.

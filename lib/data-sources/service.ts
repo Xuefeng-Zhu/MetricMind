@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { createClient } from "@/lib/insforge/server";
+import type { ConnectorDataset } from "./connectors/connector";
 import type { InsForgeDatabaseClient, User } from "@/lib/insforge/types";
 import {
   hasPermission,
@@ -11,6 +12,12 @@ import {
 import { createWorkspaceService } from "@/lib/workspaces/workspace-service";
 import { createCsvConnector } from "./connectors/csv-connector";
 import { createDemoConnector } from "./connectors/demo-connector";
+import {
+  externalConnectorDefinitions,
+  isExternalDataSourceType,
+  toStoredExternalConnectorConfig,
+} from "./connectors/external-registry";
+import { decryptCredentialPayload, encryptCredentialPayload } from "./credential-crypto";
 import { parseCsv } from "./csv/parse-csv";
 import { inferSchema } from "./csv/infer-schema";
 import { normalizeRows } from "./csv/normalize-rows";
@@ -21,8 +28,12 @@ import { runMetadataSync } from "./sync/sync-runner";
 import type {
   ActionResult,
   DataSourcesPageData,
+  ExternalConnectorConnectResult,
+  ExternalConnectorInput,
+  ExternalConnectorTestResult,
   InferredColumn,
   NormalizedDatasetRow,
+  StoredExternalConnectorConfig,
 } from "./types";
 
 const MAX_CSV_FILE_SIZE_BYTES = 50 * 1024 * 1024;
@@ -35,6 +46,50 @@ const syncInputSchema = z.object({
 const demoInputSchema = z.object({
   workspaceId: uuidSchema,
 });
+const externalConnectorInputSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("snowflake"),
+    workspaceId: uuidSchema,
+    name: z.string().trim().min(1).max(120),
+    account: z.string().trim().min(1).max(200),
+    username: z.string().trim().min(1).max(200),
+    password: z.string().min(1).max(2000),
+    warehouse: z.string().trim().min(1).max(200),
+    database: z.string().trim().min(1).max(200),
+    schema: z.string().trim().min(1).max(200),
+    role: z.string().trim().max(200).optional(),
+  }),
+  z.object({
+    type: z.literal("bigquery"),
+    workspaceId: uuidSchema,
+    name: z.string().trim().min(1).max(120),
+    projectId: z.string().trim().min(1).max(200),
+    datasetId: z.string().trim().min(1).max(200),
+    serviceAccountJson: z.string().min(1).max(20000),
+    location: z.string().trim().max(80).optional(),
+  }),
+  z.object({
+    type: z.literal("postgres"),
+    workspaceId: uuidSchema,
+    name: z.string().trim().min(1).max(120),
+    host: z.string().trim().min(1).max(300),
+    port: z.coerce.number().int().min(1).max(65535),
+    database: z.string().trim().min(1).max(200),
+    schema: z.string().trim().min(1).max(200),
+    username: z.string().trim().min(1).max(200),
+    password: z.string().min(1).max(2000),
+    sslMode: z.enum(["require", "disable"]),
+  }),
+  z.object({
+    type: z.literal("motherduck"),
+    workspaceId: uuidSchema,
+    name: z.string().trim().min(1).max(120),
+    token: z.string().min(1).max(2000),
+    database: z.string().trim().min(1).max(200).default("md:"),
+    schema: z.string().trim().min(1).max(200),
+    host: z.string().trim().max(300).optional(),
+  }),
+]);
 const createSemanticModelInputSchema = z.object({
   workspaceId: uuidSchema,
   datasetId: uuidSchema,
@@ -126,6 +181,14 @@ function primaryKey(columns: InferredColumn[]): string | null {
     columns.find((column) => column.name === "id")?.name ??
     null
   );
+}
+
+function supportsSemanticModel(sourceType: string): boolean {
+  return sourceType === "csv" || sourceType === "demo";
+}
+
+function getConnectorWarnings(connector: { getDiscoveryWarnings?: () => string[] }): string[] {
+  return connector.getDiscoveryWarnings?.() ?? [];
 }
 
 function badRequest(message: string): Error {
@@ -238,6 +301,7 @@ async function persistConnectorDataset(input: {
   displayName: string;
   description: string;
   rows: NormalizedDatasetRow[];
+  rowCount?: number;
   columns: InferredColumn[];
   owner: string;
 }) {
@@ -250,7 +314,7 @@ async function persistConnectorDataset(input: {
     name: input.name,
     displayName: input.displayName,
     description: input.description,
-    rowCount: input.rows.length,
+    rowCount: input.rowCount ?? input.rows.length,
     columnCount: input.columns.length,
     primaryKey: primaryKey(input.columns),
     status: toDatasetStatus(profile.semanticReadinessScore),
@@ -278,6 +342,55 @@ async function persistConnectorDataset(input: {
   });
 
   return { dataset, columns, profile: datasetProfile, suggestions };
+}
+
+async function persistDiscoveredDatasets(input: {
+  context: AuthenticatedContext;
+  dataSourceId: string;
+  datasets: ConnectorDataset[];
+  owner: string;
+}) {
+  const persisted = [];
+  for (const dataset of input.datasets) {
+    persisted.push(
+      await persistConnectorDataset({
+        context: input.context,
+        dataSourceId: input.dataSourceId,
+        name: dataset.name,
+        displayName: dataset.displayName,
+        description: dataset.description,
+        rows: dataset.rows,
+        rowCount: dataset.rowCount,
+        columns: dataset.columns,
+        owner: input.owner,
+      })
+    );
+  }
+  return persisted;
+}
+
+async function updateScopeWarning(input: {
+  repository: DataSourcesRepository;
+  workspaceId: string;
+  dataSourceId: string;
+  warnings: string[];
+}) {
+  await input.repository.deleteDataSourceIssuesByCategory({
+    workspaceId: input.workspaceId,
+    dataSourceId: input.dataSourceId,
+    category: "external_scope_truncated",
+  });
+
+  if (input.warnings.length === 0) return;
+
+  await input.repository.createDataSourceIssue({
+    workspaceId: input.workspaceId,
+    dataSourceId: input.dataSourceId,
+    severity: "medium",
+    category: "external_scope_truncated",
+    title: "Connector scope was truncated",
+    description: input.warnings.join(" "),
+  });
 }
 
 export async function getDataSourcesPageData(): Promise<DataSourcesPageData> {
@@ -483,6 +596,235 @@ export async function createDemoDataSource(input: z.infer<typeof demoInputSchema
   };
 }
 
+export async function testExternalDataSource(
+  input: ExternalConnectorInput
+): Promise<ExternalConnectorTestResult> {
+  const parsed = externalConnectorInputSchema.parse(input) as ExternalConnectorInput;
+  const context = await getAuthenticatedContext(parsed.workspaceId, "admin");
+  const definition = externalConnectorDefinitions[parsed.type];
+  const connector = definition.createConnector(parsed);
+  const connection = await connector.testConnection();
+  if (!connection.ok) {
+    throw badRequest(connection.message);
+  }
+
+  const datasets = await connector.discoverDatasets();
+  const warnings = getConnectorWarnings(connector);
+  await logAudit(context.repository, {
+    workspaceId: context.workspaceId,
+    actorId: context.profileId,
+    action: "datasource.connection_tested",
+    targetType: "data_source",
+    metadata: {
+      provider: parsed.type,
+      dataset_count: datasets.length,
+      warnings,
+    },
+  });
+
+  return {
+    message: connection.message,
+    datasetCount: datasets.length,
+    warnings,
+  };
+}
+
+export async function connectExternalDataSource(
+  input: ExternalConnectorInput
+): Promise<ExternalConnectorConnectResult> {
+  const parsed = externalConnectorInputSchema.parse(input) as ExternalConnectorInput;
+  const context = await getAuthenticatedContext(parsed.workspaceId, "admin");
+  const definition = externalConnectorDefinitions[parsed.type];
+  const connector = definition.createConnector(parsed);
+  const connection = await connector.testConnection();
+  if (!connection.ok) {
+    throw badRequest(connection.message);
+  }
+
+  const datasets = await connector.discoverDatasets();
+  const warnings = getConnectorWarnings(connector);
+  const totalRows = datasets.reduce(
+    (total, dataset) => total + (dataset.rowCount ?? dataset.rows.length),
+    0
+  );
+  const dataSource = await context.repository.createDataSource({
+    workspaceId: context.workspaceId,
+    name: parsed.name,
+    type: parsed.type,
+    status: "processing",
+    rowCount: totalRows,
+    provider: definition.provider,
+    category: definition.category,
+    description: definition.description,
+    owner: context.user.email ?? "Workspace admin",
+    region: definition.region(parsed),
+    healthScore: datasets.length > 0 ? 90 : 65,
+    syncStatus: "syncing",
+    credentialStatus: "valid",
+    connectorVersion: definition.connectorVersion,
+    lastSyncedAt: new Date().toISOString(),
+    nextSyncAt: null,
+    metadata: {
+      tags: [parsed.type, "external", "metadata"],
+      redactedSummary: definition.redactedSummary(parsed),
+    },
+  });
+
+  try {
+    await context.repository.upsertDataSourceCredential({
+      workspaceId: context.workspaceId,
+      dataSourceId: dataSource.id,
+      encryptedPayload: encryptCredentialPayload(toStoredExternalConnectorConfig(parsed)),
+      redactedSummary: definition.redactedSummary(parsed),
+      createdBy: context.profileId,
+    });
+    await persistDiscoveredDatasets({
+      context,
+      dataSourceId: dataSource.id,
+      datasets,
+      owner: definition.provider,
+    });
+    await updateScopeWarning({
+      repository: context.repository,
+      workspaceId: context.workspaceId,
+      dataSourceId: dataSource.id,
+      warnings,
+    });
+    const updatedDataSource = await context.repository.updateDataSource(dataSource.id, {
+      status: "ready",
+      sync_status: warnings.length > 0 ? "attention" : "synced",
+      health_score: warnings.length > 0 ? 78 : 92,
+      row_count: totalRows,
+      last_synced_at: new Date().toISOString(),
+    });
+
+    await logAudit(context.repository, {
+      workspaceId: context.workspaceId,
+      actorId: context.profileId,
+      action: "datasource.connected",
+      targetType: "data_source",
+      targetId: dataSource.id,
+      metadata: {
+        provider: parsed.type,
+        dataset_count: datasets.length,
+        warnings,
+      },
+    });
+
+    const pageData = await context.repository.listPageData(context.workspaceId, context.role);
+    return {
+      dataSource: updatedDataSource,
+      datasetCount: datasets.length,
+      warnings,
+      pageData: {
+        workspaceId: context.workspaceId,
+        role: context.role,
+        ...pageData,
+      },
+    };
+  } catch (error) {
+    await context.repository.updateDataSource(dataSource.id, {
+      status: "error",
+      sync_status: "attention",
+      health_score: 0,
+    });
+    throw error;
+  }
+}
+
+async function syncExternalDataSource(
+  context: AuthenticatedContext,
+  source: Awaited<ReturnType<DataSourcesRepository["getDataSource"]>>
+) {
+  if (!isExternalDataSourceType(source.type)) {
+    throw badRequest("Unsupported external data source type.");
+  }
+
+  const started = Date.now();
+  const syncRun = await context.repository.createSyncRun({
+    workspaceId: context.workspaceId,
+    dataSourceId: source.id,
+    triggeredBy: "Manual",
+    triggeredByUserId: context.profileId,
+    message: "External metadata refresh started.",
+  });
+
+  try {
+    await context.repository.updateDataSource(source.id, {
+      sync_status: "syncing",
+      status: "processing",
+    });
+
+    const credential = await context.repository.getDataSourceCredential(
+      context.workspaceId,
+      source.id
+    );
+    const config = decryptCredentialPayload<StoredExternalConnectorConfig>(
+      credential.encrypted_payload
+    );
+    const definition = externalConnectorDefinitions[source.type];
+    const connector = definition.createConnector(config);
+    const connection = await connector.testConnection();
+    if (!connection.ok) {
+      throw new Error(connection.message);
+    }
+
+    const datasets = await connector.discoverDatasets();
+    const warnings = getConnectorWarnings(connector);
+    const totalRows = datasets.reduce(
+      (total, dataset) => total + (dataset.rowCount ?? dataset.rows.length),
+      0
+    );
+
+    await context.repository.replaceDatasetsForSource({
+      workspaceId: context.workspaceId,
+      dataSourceId: source.id,
+    });
+    await persistDiscoveredDatasets({
+      context,
+      dataSourceId: source.id,
+      datasets,
+      owner: definition.provider,
+    });
+    await updateScopeWarning({
+      repository: context.repository,
+      workspaceId: context.workspaceId,
+      dataSourceId: source.id,
+      warnings,
+    });
+
+    const completedAt = new Date().toISOString();
+    const completedRun = await context.repository.updateSyncRun(syncRun.id, {
+      status: warnings.length > 0 ? "warning" : "success",
+      completed_at: completedAt,
+      duration_ms: Date.now() - started,
+      row_count: totalRows,
+      message:
+        warnings.length > 0
+          ? `${source.name} metadata refreshed with warnings.`
+          : `${source.name} metadata refresh completed.`,
+      metadata: { datasetsSynced: datasets.length, warnings },
+    });
+    const dataSource = await context.repository.updateDataSource(source.id, {
+      sync_status: warnings.length > 0 ? "attention" : "synced",
+      status: "ready",
+      health_score: warnings.length > 0 ? 78 : 92,
+      row_count: totalRows,
+      last_synced_at: completedAt,
+    });
+
+    return { syncRun: completedRun, dataSource };
+  } catch (error) {
+    await context.repository.updateSyncRun(syncRun.id, {
+      status: "failed",
+      completed_at: new Date().toISOString(),
+      duration_ms: Date.now() - started,
+      message: error instanceof Error ? error.message : "External sync failed.",
+    });
+    throw error;
+  }
+}
+
 export async function syncDataSource(input: z.infer<typeof syncInputSchema>) {
   const parsed = syncInputSchema.parse(input);
   const context = await getAuthenticatedContext(parsed.workspaceId, "admin");
@@ -492,14 +834,16 @@ export async function syncDataSource(input: z.infer<typeof syncInputSchema>) {
   );
 
   try {
-    const result = await runMetadataSync({
-      repository: context.repository,
-      workspaceId: context.workspaceId,
-      dataSourceId: source.id,
-      profileId: context.profileId,
-      rowCount: source.row_count ?? 0,
-      sourceName: source.name,
-    });
+    const result = isExternalDataSourceType(source.type)
+      ? await syncExternalDataSource(context, source)
+      : await runMetadataSync({
+          repository: context.repository,
+          workspaceId: context.workspaceId,
+          dataSourceId: source.id,
+          profileId: context.profileId,
+          rowCount: source.row_count ?? 0,
+          sourceName: source.name,
+        });
     await logAudit(context.repository, {
       workspaceId: context.workspaceId,
       actorId: context.profileId,
@@ -575,6 +919,11 @@ export async function createSemanticModelFromDataset(
     context.workspaceId,
     parsed.datasetId
   );
+  if (!supportsSemanticModel(graph.source.type)) {
+    throw badRequest(
+      "Semantic model creation for external connectors requires full ingestion or live query execution and is not enabled in this v1 connector build."
+    );
+  }
   const result = await context.repository.createSemanticModelFromDataset({
     workspaceId: context.workspaceId,
     userId: context.profileId,

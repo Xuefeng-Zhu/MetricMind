@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Database,
+  Cloud,
   FileText,
   Grid3X3,
   HardDrive,
@@ -20,6 +21,10 @@ interface DataSourceCardProps {
 const sourceIcons: Record<MetricMindDataSource["type"], LucideIcon> = {
   demo: BarChart3,
   csv: FileText,
+  snowflake: Cloud,
+  bigquery: Database,
+  postgres: Database,
+  motherduck: Database,
 };
 
 const statusStyles: Record<MetricMindDataSource["status"], string> = {

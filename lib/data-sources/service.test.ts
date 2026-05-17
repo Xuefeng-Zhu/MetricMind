@@ -7,11 +7,16 @@ const repositoryMock = vi.hoisted(() => ({
   listPageData: vi.fn(),
   createDataSource: vi.fn(),
   updateDataSource: vi.fn(),
+  upsertDataSourceCredential: vi.fn(),
+  getDataSourceCredential: vi.fn(),
+  replaceDatasetsForSource: vi.fn(),
   createUploadedFile: vi.fn(),
   createDataset: vi.fn(),
   createDatasetColumns: vi.fn(),
   insertDatasetRows: vi.fn(),
   createDatasetProfile: vi.fn(),
+  createDataSourceIssue: vi.fn(),
+  deleteDataSourceIssuesByCategory: vi.fn(),
   createSyncRun: vi.fn(),
   updateSyncRun: vi.fn(),
   getDataSource: vi.fn(),
@@ -53,10 +58,66 @@ vi.mock("./repository", () => ({
 }));
 
 import {
+  connectExternalDataSource,
   createSemanticModelFromDataset,
   syncDataSource,
+  testExternalDataSource,
   uploadCsvDataset,
 } from "./service";
+
+vi.mock("./connectors/external-registry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./connectors/external-registry")>();
+  return {
+    ...actual,
+    externalConnectorDefinitions: {
+      ...actual.externalConnectorDefinitions,
+      postgres: {
+        ...actual.externalConnectorDefinitions.postgres,
+        createConnector: () => ({
+          id: "postgres",
+          name: "Warehouse",
+          testConnection: vi.fn().mockResolvedValue({
+            ok: true,
+            message: "Postgres connection verified.",
+          }),
+          discoverDatasets: vi.fn().mockResolvedValue([
+            {
+              name: "customers",
+              displayName: "Customers",
+              description: "Postgres table public.customers.",
+              primaryKey: "id",
+              rowCount: 100,
+              columns: [
+                {
+                  name: "id",
+                  dataType: "integer",
+                  nullable: false,
+                  nullRate: 0,
+                  uniqueCount: 2,
+                  sampleValues: ["1", "2"],
+                  isPii: false,
+                  semanticRole: "primary_key",
+                  semanticType: "Id",
+                  suggestedSemanticType: "dimension",
+                  suggestedAggregation: null,
+                  qualityScore: 99,
+                  ordinalPosition: 0,
+                },
+              ],
+              rows: [
+                { rowIndex: 0, data: { id: 1 } },
+                { rowIndex: 1, data: { id: 2 } },
+              ],
+            },
+          ]),
+          discoverSchema: vi.fn(),
+          previewRows: vi.fn(),
+          getDiscoveryWarnings: () => [],
+        }),
+      },
+    },
+  };
+});
 
 const workspaceId = "00000000-0000-4000-8000-000000000001";
 const dataSourceId = "00000000-0000-4000-8000-000000000002";
@@ -78,6 +139,7 @@ function sourceRow() {
 describe("data sources service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.DATA_SOURCE_CREDENTIALS_KEY = "test-data-source-credential-key-12345";
     resolveWorkspaceRoleMock.mockResolvedValue("admin");
     resolveProfileIdMock.mockResolvedValue("profile-1");
     repositoryMock.listPageData.mockResolvedValue({
@@ -89,6 +151,8 @@ describe("data sources service", () => {
     });
     repositoryMock.createDataSource.mockResolvedValue(sourceRow());
     repositoryMock.updateDataSource.mockResolvedValue(sourceRow());
+    repositoryMock.upsertDataSourceCredential.mockResolvedValue({ id: "credential-1" });
+    repositoryMock.replaceDatasetsForSource.mockResolvedValue(undefined);
     repositoryMock.createUploadedFile.mockResolvedValue({ id: "file-1" });
     repositoryMock.createDataset.mockResolvedValue({
       id: datasetId,
@@ -112,6 +176,8 @@ describe("data sources service", () => {
       semantic_readiness_score: 88,
       semantic_suggestions: [],
     });
+    repositoryMock.createDataSourceIssue.mockResolvedValue({ id: "issue-1" });
+    repositoryMock.deleteDataSourceIssuesByCategory.mockResolvedValue(undefined);
     repositoryMock.createSyncRun.mockResolvedValue({
       id: "sync-1",
       status: "running",
@@ -230,6 +296,69 @@ describe("data sources service", () => {
     expect(result.pageData.workspaceId).toBe(workspaceId);
   });
 
+  it("tests external connector credentials without persisting a source", async () => {
+    const result = await testExternalDataSource({
+      type: "postgres",
+      workspaceId,
+      name: "Analytics Postgres",
+      host: "db.example.com",
+      port: 5432,
+      database: "analytics",
+      schema: "public",
+      username: "reader",
+      password: "secret-password",
+      sslMode: "require",
+    });
+
+    expect(result).toMatchObject({
+      message: "Postgres connection verified.",
+      datasetCount: 1,
+      warnings: [],
+    });
+    expect(repositoryMock.createDataSource).not.toHaveBeenCalled();
+    expect(repositoryMock.insertAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "datasource.connection_tested" })
+    );
+  });
+
+  it("connects external sources with encrypted credentials and discovered metadata", async () => {
+    const result = await connectExternalDataSource({
+      type: "postgres",
+      workspaceId,
+      name: "Analytics Postgres",
+      host: "db.example.com",
+      port: 5432,
+      database: "analytics",
+      schema: "public",
+      username: "reader",
+      password: "secret-password",
+      sslMode: "require",
+    });
+
+    expect(repositoryMock.createDataSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId,
+        name: "Analytics Postgres",
+        type: "postgres",
+        credentialStatus: "valid",
+        rowCount: 100,
+      })
+    );
+    const credentialCall = repositoryMock.upsertDataSourceCredential.mock.calls[0][0];
+    expect(JSON.stringify(credentialCall.encryptedPayload)).not.toContain("secret-password");
+    expect(credentialCall.redactedSummary).toMatchObject({
+      host: "db.example.com",
+      username: "reader",
+    });
+    expect(repositoryMock.createDataset).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "customers", rowCount: 100 })
+    );
+    expect(repositoryMock.insertAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "datasource.connected" })
+    );
+    expect(result.pageData.workspaceId).toBe(workspaceId);
+  });
+
   it("creates a semantic model from a dataset for analyst-plus users", async () => {
     resolveWorkspaceRoleMock.mockResolvedValue("analyst");
 
@@ -243,5 +372,24 @@ describe("data sources service", () => {
       expect.objectContaining({ action: "semantic_model.created" })
     );
     expect(result.metricIds).toEqual(["metric-1"]);
+  });
+
+  it("rejects semantic model creation for external live-metadata connectors", async () => {
+    repositoryMock.getDatasetGraph.mockResolvedValue({
+      source: { ...sourceRow(), type: "postgres" },
+      dataset: {
+        id: datasetId,
+        name: "customers",
+        display_name: "Customers",
+        description: "External table",
+        primary_key: "id",
+      },
+      columns: [],
+    });
+
+    await expect(createSemanticModelFromDataset({ workspaceId, datasetId })).rejects.toThrow(
+      "Semantic model creation for external connectors"
+    );
+    expect(repositoryMock.createSemanticModelFromDataset).not.toHaveBeenCalled();
   });
 });

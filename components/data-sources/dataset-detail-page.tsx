@@ -22,6 +22,7 @@ import type {
   ColumnSemanticRole,
   DataSourcesPageData,
   DatasetColumn,
+  MetricMindDataSource,
   SemanticSuggestion,
 } from "@/lib/data-sources/types";
 import {
@@ -59,6 +60,10 @@ function readinessClassName(value: number): string {
   if (value >= 90) return "bg-emerald-50 text-emerald-700 ring-emerald-200";
   if (value >= 75) return "bg-blue-50 text-blue-700 ring-blue-200";
   return "bg-amber-50 text-amber-700 ring-amber-200";
+}
+
+function supportsSemanticModel(type: MetricMindDataSource["type"]) {
+  return type === "csv" || type === "demo";
 }
 
 function ColumnStats({ columns }: { columns: DatasetColumn[] }) {
@@ -243,8 +248,18 @@ export function DatasetDetailPage({
 
   const selectedSource = source;
   const selectedDataset = dataset;
+  const semanticModelSupported = supportsSemanticModel(selectedSource.type);
 
   async function handleCreateSemanticModel() {
+    if (!semanticModelSupported) {
+      toast({
+        title: "Semantic model unavailable",
+        description:
+          "External connectors currently support live metadata and samples. Full semantic modeling requires ingestion or live query execution.",
+      });
+      return;
+    }
+
     if (!initialData.workspaceId) {
       toast({
         title: "Workspace required",
@@ -317,12 +332,12 @@ export function DatasetDetailPage({
                 Back to source
               </Link>
             </Button>
-            <Button
-              type="button"
-              onClick={handleCreateSemanticModel}
-              disabled={creatingSemanticModel}
-              className="gap-2"
-            >
+          <Button
+            type="button"
+            onClick={handleCreateSemanticModel}
+            disabled={creatingSemanticModel || !semanticModelSupported}
+            className="gap-2"
+          >
               <ShieldCheck className="h-4 w-4" aria-hidden="true" />
               {creatingSemanticModel ? "Creating model" : "Create semantic model"}
             </Button>

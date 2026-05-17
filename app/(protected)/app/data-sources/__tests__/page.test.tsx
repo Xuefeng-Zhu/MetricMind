@@ -274,14 +274,17 @@ describe("DataSourcesPage", () => {
     expect(within(sourceSection).queryByText("CSV Upload: Customers")).not.toBeInTheDocument();
   });
 
-  it("opens the connector gallery with only supported source actions", () => {
+  it("opens the connector gallery with live metadata source actions", () => {
     render(<DataSourcesPage initialData={pageData} />);
 
     fireEvent.click(screen.getByRole("button", { name: /connect source/i }));
     expect(screen.getByRole("dialog", { name: "Connector gallery" })).toBeInTheDocument();
     expect(screen.getByText("CSV Upload")).toBeInTheDocument();
     expect(screen.getAllByText("Demo SaaS Dataset").length).toBeGreaterThan(0);
-    expect(screen.queryByText("Snowflake")).not.toBeInTheDocument();
+    expect(screen.getByText("Snowflake")).toBeInTheDocument();
+    expect(screen.getByText("BigQuery")).toBeInTheDocument();
+    expect(screen.getByText("Postgres")).toBeInTheDocument();
+    expect(screen.getByText("MotherDuck")).toBeInTheDocument();
   });
 
   it("opens CSV upload through the connector gallery", () => {
@@ -294,6 +297,22 @@ describe("DataSourcesPage", () => {
     fireEvent.click(within(csvConnector as HTMLElement).getByRole("button", { name: "Connect" }));
     expect(screen.getByRole("dialog", { name: "Upload CSV" })).toBeInTheDocument();
     expect(screen.getByText("No file selected")).toBeInTheDocument();
+  });
+
+  it("opens provider-specific setup without creating fake source cards", () => {
+    render(<DataSourcesPage initialData={pageData} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /connect source/i }));
+    const sourceSection = screen.getByLabelText("Connected data sources");
+    expect(within(sourceSection).queryByText("Snowflake")).not.toBeInTheDocument();
+
+    const postgresConnector = screen.getByText("Postgres").closest("article");
+    expect(postgresConnector).not.toBeNull();
+    fireEvent.click(within(postgresConnector as HTMLElement).getByRole("button", { name: "Connect" }));
+
+    expect(screen.getByRole("heading", { name: "Connect Postgres" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Host")).toBeInTheDocument();
+    expect(screen.getByLabelText("SSL mode")).toBeInTheDocument();
   });
 });
 

@@ -89,6 +89,17 @@ Be careful with:
 - Generated semantic dimensions with `required_role`.
 - Sample values displayed in UI or stored in profiles.
 
+## External Data Source Credentials
+
+Snowflake, BigQuery, Postgres, and MotherDuck connector credentials:
+
+- Require owner/admin permissions.
+- Are submitted only to server actions.
+- Require `DATA_SOURCE_CREDENTIALS_KEY`.
+- Are encrypted before insertion into `data_source_credentials.encrypted_payload`.
+- Return only redacted source metadata to the browser.
+- Support metadata discovery and sample-row profiling, not full external row replication.
+
 ## Audit Events
 
 Audit events are written for flows such as:
@@ -107,6 +118,7 @@ Audit logging is often non-blocking so user-facing flows do not fail solely beca
 
 - Never commit `.env`, `.env.local`, or secret-bearing files.
 - Never print InsForge anon keys, access tokens, refresh tokens, OAuth verifier values, AI API keys, or credential payloads.
+- Never expose `DATA_SOURCE_CREDENTIALS_KEY` with a public env prefix.
 - When adding docs or tests, use placeholder values only.
 
 ## High-Risk Files
