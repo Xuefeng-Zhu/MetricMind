@@ -12,6 +12,7 @@ import type {
 } from "./types";
 
 type DbError = { message?: string; code?: string } | null;
+type SemanticInsert = Record<string, unknown>;
 
 interface DataSourceRow {
   id: string;
@@ -251,6 +252,62 @@ function titleize(value: string): string {
   return value
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function semanticSourceTable(source: DataSourceRow, dataset: DatasetRow): string {
+  if (source.type === "demo") {
+    return `demo.${dataset.name}`;
+  }
+
+  return "dataset_rows";
+}
+
+function isJsonBackedSource(source: DataSourceRow): boolean {
+  return source.type === "csv";
+}
+
+function jsonDataExpression(column: DatasetColumnRow): string {
+  const jsonKey = column.name.replace(/'/g, "''");
+  const textExpression = `NULLIF({alias}.data ->> '${jsonKey}', '')`;
+
+  switch (column.data_type) {
+    case "integer":
+    case "float":
+      return `(${textExpression})::numeric`;
+    case "boolean":
+      return `(${textExpression})::boolean`;
+    case "date":
+      return `(${textExpression})::date`;
+    case "timestamp":
+      return `(${textExpression})::timestamptz`;
+    case "text":
+    default:
+      return `{alias}.data ->> '${jsonKey}'`;
+  }
+}
+
+function semanticColumnExpression(column: DatasetColumnRow, jsonBacked: boolean): string | null {
+  if (!jsonBacked) {
+    return column.name.includes("cents") ? `({alias}."${column.name}" / 100.0)` : null;
+  }
+
+  const baseExpression = jsonDataExpression(column);
+  return column.name.includes("cents") ? `(${baseExpression} / 100.0)` : baseExpression;
+}
+
+function datasetScopeDimensionInsert(entityId: string): SemanticInsert {
+  return {
+    entity_id: entityId,
+    name: "Source Dataset Id",
+    slug: "source_dataset_id",
+    description: "Internal dataset row scope for uploaded CSV semantic queries.",
+    data_type: "text",
+    source_column: "dataset_id",
+    expression: null,
+    time_grain: null,
+    is_pii: false,
+    required_role: "viewer",
+  };
 }
 
 function formatDuration(ms?: number | null): string {
@@ -738,10 +795,8 @@ export function createDataSourcesRepository(
     async createSemanticModelFromDataset(input) {
       const baseSlug = slugify(input.dataset.display_name || input.dataset.name);
       const slug = `${baseSlug}_${input.dataset.id.slice(0, 8)}`;
-      const sourceTable =
-        input.source.type === "demo"
-          ? `demo.${input.dataset.name}`
-          : `uploaded.${input.dataset.name}`;
+      const sourceTable = semanticSourceTable(input.source, input.dataset);
+      const jsonBackedSource = isJsonBackedSource(input.source);
 
       const { data: model, error: modelError } = await insforge
         .from("semantic_models")
@@ -783,24 +838,29 @@ export function createDataSourcesRepository(
           (column.data_type === "integer" || column.data_type === "float")
       );
 
-      if (dimensions.length > 0) {
+      const dimensionInserts: SemanticInsert[] = [
+        ...(jsonBackedSource ? [datasetScopeDimensionInsert(entityId)] : []),
+        ...dimensions.map((column) => ({
+          entity_id: entityId,
+          name: titleize(column.name),
+          slug: slugify(column.name),
+          description: column.description ?? `${titleize(column.name)} dimension.`,
+          data_type: column.data_type,
+          source_column: column.name,
+          expression: semanticColumnExpression(column, jsonBackedSource),
+          time_grain:
+            column.semantic_role === "timestamp" &&
+            (column.data_type === "date" || column.data_type === "timestamp")
+              ? "day"
+              : null,
+          is_pii: Boolean(column.is_pii),
+          required_role: column.is_pii ? "admin" : "viewer",
+        })),
+      ];
+
+      if (dimensionInserts.length > 0) {
         const { error } = await insforge.from("semantic_dimensions").insert(
-          dimensions.map((column) => ({
-            entity_id: entityId,
-            name: titleize(column.name),
-            slug: slugify(column.name),
-            description: column.description ?? `${titleize(column.name)} dimension.`,
-            data_type: column.data_type,
-            source_column: column.name,
-            expression: null,
-            time_grain:
-              column.semantic_role === "timestamp" &&
-              (column.data_type === "date" || column.data_type === "timestamp")
-                ? "day"
-                : null,
-            is_pii: Boolean(column.is_pii),
-            required_role: column.is_pii ? "admin" : "viewer",
-          }))
+          dimensionInserts
         );
         assertNoError(error, "Failed to create semantic dimensions");
       }
@@ -815,7 +875,7 @@ export function createDataSourcesRepository(
             description: column.description ?? `${titleize(column.name)} measure.`,
             data_type: column.data_type,
             source_column: column.name,
-            expression: column.name.includes("cents") ? `({alias}."${column.name}" / 100.0)` : null,
+            expression: semanticColumnExpression(column, jsonBackedSource),
             default_aggregation:
               column.suggested_aggregation === "avg"
                 ? "average"
@@ -852,7 +912,9 @@ export function createDataSourcesRepository(
               measure: mrrMeasure.slug,
               aggregation: "sum",
             },
-            filters: [],
+            filters: jsonBackedSource
+              ? [{ field: "source_dataset_id", operator: "eq", value: input.dataset.id }]
+              : [],
           })
           .select("id")
           .single();

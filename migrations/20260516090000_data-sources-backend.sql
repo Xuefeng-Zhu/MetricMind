@@ -99,6 +99,9 @@ ALTER TABLE dataset_columns DROP CONSTRAINT IF EXISTS uq_dataset_columns_source_
 CREATE UNIQUE INDEX IF NOT EXISTS uq_dataset_columns_dataset_name
   ON dataset_columns(dataset_id, name)
   WHERE dataset_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_dataset_columns_source_name_legacy
+  ON dataset_columns(data_source_id, name)
+  WHERE dataset_id IS NULL;
 
 CREATE TABLE IF NOT EXISTS dataset_rows (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -267,9 +270,18 @@ CREATE POLICY "dataset_columns_select_role_aware" ON dataset_columns
 CREATE POLICY "dataset_columns_insert_analyst_plus" ON dataset_columns
   FOR INSERT TO authenticated
   WITH CHECK (
-    dataset_id IN (
-      SELECT d.id FROM datasets d
-      WHERE d.workspace_id = ANY(public.current_workspace_ids_for_roles(ARRAY['owner', 'admin', 'analyst']))
+    (
+      dataset_id IN (
+        SELECT d.id FROM datasets d
+        WHERE d.workspace_id = ANY(public.current_workspace_ids_for_roles(ARRAY['owner', 'admin', 'analyst']))
+      )
+    )
+    OR (
+      dataset_id IS NULL
+      AND data_source_id IN (
+        SELECT ds.id FROM data_sources ds
+        WHERE ds.workspace_id = ANY(public.current_workspace_ids_for_roles(ARRAY['owner', 'admin', 'analyst']))
+      )
     )
   );
 
