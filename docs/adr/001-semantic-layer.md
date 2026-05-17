@@ -161,8 +161,8 @@ Trade-offs:
 
 ## Related ADRs
 
-- [ADR 000: Current System Boundary And Runtime Shape](system-design.md)
-- [ADR 002: Manage Data Sources Through Server-Side Lifecycle Services](data-source.md)
+- [ADR 000: Current System Boundary And Runtime Shape](000-system-design.md)
+- [ADR 002: Manage Data Sources Through Server-Side Lifecycle Services](002-data-source.md)
 
 ## Open Questions
 

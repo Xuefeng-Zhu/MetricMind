@@ -155,8 +155,8 @@ Trade-offs:
 
 ## Related ADRs
 
-- [ADR 000: Current System Boundary And Runtime Shape](system-design.md)
-- [ADR 001: Govern Analytics Through SemanticQuery Compilation](semantic-layer.md)
+- [ADR 000: Current System Boundary And Runtime Shape](000-system-design.md)
+- [ADR 001: Govern Analytics Through SemanticQuery Compilation](001-semantic-layer.md)
 
 ## Open Questions
 

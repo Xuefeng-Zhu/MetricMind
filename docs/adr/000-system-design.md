@@ -96,7 +96,7 @@ POST /api/ask
   -> execute_readonly_query RPC
 ```
 
-The foundational rule is covered in [ADR 001](semantic-layer.md): AI does not generate executable SQL for the governed ask flow.
+The foundational rule is covered in [ADR 001](001-semantic-layer.md): AI does not generate executable SQL for the governed ask flow.
 
 ### Data Source Lifecycle Flow
 
@@ -109,7 +109,7 @@ Data Sources UI
   -> data source, dataset, profile, row, sync, issue tables
 ```
 
-The lifecycle decision is covered in [ADR 002](data-source.md).
+The lifecycle decision is covered in [ADR 002](002-data-source.md).
 
 ## Module Ownership
 
@@ -168,8 +168,8 @@ Trade-offs:
 
 ## Related ADRs
 
-- [ADR 001: Govern Analytics Through SemanticQuery Compilation](semantic-layer.md)
-- [ADR 002: Manage Data Sources Through Server-Side Lifecycle Services](data-source.md)
+- [ADR 001: Govern Analytics Through SemanticQuery Compilation](001-semantic-layer.md)
+- [ADR 002: Manage Data Sources Through Server-Side Lifecycle Services](002-data-source.md)
 
 ## Open Questions
 

@@ -6,7 +6,7 @@ ADRs in this repository should describe the checked-in system, not broad product
 
 ## How To Read This Folder
 
-Start with [ADR 000](system-design.md) for the current system boundary. Then read the domain ADRs for the area you are changing.
+Start with [ADR 000](000-system-design.md) for the current system boundary. Then read the domain ADRs for the area you are changing.
 
 ADRs are intentionally narrower than [../architecture.md](../architecture.md):
 
@@ -18,9 +18,9 @@ ADRs are intentionally narrower than [../architecture.md](../architecture.md):
 
 | Number | Area | Status | Decision |
 | --- | --- | --- | --- |
-| [ADR 000](system-design.md) | System design | Accepted | MetricMind is a modular Next.js app with server-side domain services and InsForge/Postgres as the application data platform. |
-| [ADR 001](semantic-layer.md) | Semantic layer | Accepted | AI and UI analytics requests resolve to `SemanticQuery` JSON, then pass through the semantic validator/compiler before SQL execution. |
-| [ADR 002](data-source.md) | Data sources | Accepted | Data source ingestion, profiling, sync, and semantic-model creation live in server-side services and repositories, with the UI calling actions or route handlers. |
+| [ADR 000](000-system-design.md) | System design | Accepted | MetricMind is a modular Next.js app with server-side domain services and InsForge/Postgres as the application data platform. |
+| [ADR 001](001-semantic-layer.md) | Semantic layer | Accepted | AI and UI analytics requests resolve to `SemanticQuery` JSON, then pass through the semantic validator/compiler before SQL execution. |
+| [ADR 002](002-data-source.md) | Data sources | Accepted | Data source ingestion, profiling, sync, and semantic-model creation live in server-side services and repositories, with the UI calling actions or route handlers. |
 
 ## Organization Rules
 

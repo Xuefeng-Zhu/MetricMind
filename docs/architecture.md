@@ -110,7 +110,7 @@ Rules that matter:
 - `lib/semantic/semantic-query-compiler.ts` is the only approved source of generated analytics SQL.
 - `execute_readonly_query` in `migrations/20260514080841_initial-schema.sql` rejects mutating SQL and applies a timeout.
 
-See [adr/semantic-layer.md](adr/semantic-layer.md) for the decision record behind this contract.
+See [adr/001-semantic-layer.md](adr/001-semantic-layer.md) for the decision record behind this contract.
 
 ## Data Sources Architecture
 
@@ -138,7 +138,7 @@ Key modules:
 
 There is also an older `lib/data-sources/data-source-service.ts` used by `app/api/data-sources/route.ts`. Check which endpoint a UI flow actually calls before modifying either service.
 
-See [adr/data-source.md](adr/data-source.md) for the data-source lifecycle decision record.
+See [adr/002-data-source.md](adr/002-data-source.md) for the data-source lifecycle decision record.
 
 ## Semantic Layer Architecture
 
