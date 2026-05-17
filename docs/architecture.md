@@ -177,7 +177,6 @@ Important migration groups:
 
 ## Known Architecture Gaps
 
-- No root `README.md`.
 - No checked-in `.github/` CI workflow.
 - No deployment config such as `vercel.json`.
 - No separate `typecheck` script.
