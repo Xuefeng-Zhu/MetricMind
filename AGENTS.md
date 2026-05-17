@@ -9,7 +9,7 @@ MetricMind is a Next.js business intelligence app for governed, AI-assisted anal
 - Public landing, demo, login, and signup pages.
 - Protected app shell under `/app`.
 - Workspace bootstrap and workspace-scoped API requests.
-- Data source management with CSV upload, schema profiling, mock/demo connectors, and semantic model creation.
+- Data source management with CSV upload, schema profiling, explicit demo dataset creation, and semantic model creation.
 - Semantic layer entities, dimensions, measures, relationships, metrics, glossary terms, and certification.
 - Natural-language analysis through `/api/ask`, where AI produces `SemanticQuery` JSON and the app compiler generates SQL.
 - Dashboards, saved insights, conversations, alerts, audit logs, and lineage-oriented services.
@@ -52,7 +52,7 @@ question -> AI SemanticQuery JSON -> semantic validator/compiler -> read-only SQ
   - `lib/semantic/`: Semantic registry loader, validator, compiler, resolver, and service.
   - `lib/query/`: Natural-language query planner.
   - `lib/ai/`: AI provider abstraction and prompt/trace logic.
-  - `lib/mock-data/`: Deterministic mock/demo data. Production protected page files should not import this directly.
+  - `lib/mock-data/`: Deterministic mock/demo data for tests and public demo surfaces. Production app modules should not import this directly.
 - `stores/`: Zustand stores for auth, workspaces, dashboards, and conversations.
 - `migrations/`: Raw SQL migrations for app schema, demo data, RLS, semantic registry, and data source backend.
 - `__tests__/`: Cross-cutting smoke/integration tests.
@@ -133,7 +133,7 @@ npm run build
 git diff --check
 ```
 
-For docs-only changes, `npm test` is still useful because several tests enforce repository assumptions such as production protected pages not importing mock data.
+For docs-only changes, `npm test` is still useful because several tests enforce repository assumptions such as production app modules not importing mock data.
 
 See [docs/testing.md](docs/testing.md).
 
@@ -146,7 +146,7 @@ See [docs/testing.md](docs/testing.md).
 - Keep UI consistent with existing Tailwind tokens and shadcn-style components.
 - Use Lucide icons where the existing UI uses icons.
 - Avoid ad hoc SQL string generation outside the semantic compiler and vetted backend SQL helpers.
-- Keep deterministic mock data in `lib/mock-data/`; do not import it from protected production page files.
+- Keep deterministic mock data in `lib/mock-data/`; do not import it from production app modules.
 
 ## Architecture Overview
 
@@ -211,7 +211,7 @@ See [docs/architecture.md](docs/architecture.md).
 - CSV upload parses the file server-side, infers schema, writes dataset metadata, stores row JSON in `dataset_rows`, profiles the dataset, and creates semantic suggestions.
 - Uploaded file content is not documented as persisted; the current upload flow persists metadata and normalized rows.
 - Demo data uses the `demo` schema and demo connector paths.
-- Data source sync is currently `runMockSync` driven and records sync runs.
+- Data source sync currently records manual metadata refresh runs for implemented CSV and demo sources.
 - Data source credentials have a `data_source_credentials.encrypted_payload` schema, but current docs should not claim full credential management beyond what code proves.
 
 ## Security And Privacy
@@ -233,7 +233,7 @@ See [docs/security.md](docs/security.md).
 
 - Do not let the AI provider return raw SQL for `/api/ask`; preserve `SemanticQuery` JSON compilation.
 - Do not confuse the public `/demo` page with authenticated app behavior. `/demo` uses hardcoded sample responses.
-- The Data Sources page has backend-backed flows plus mock/fallback data. Check `lib/data-sources/service.ts` before editing UI assumptions.
+- The Data Sources page renders backend-backed workspace state plus explicit empty states. Check `lib/data-sources/service.ts` before editing UI assumptions.
 - `app/api/data-sources/route.ts` still uses the older `data-source-service.ts`; `/api/data-sources/upload-csv` uses the richer service path.
 - Missing `NEXT_PUBLIC_INSFORGE_URL` or anon key will break auth/session/server clients.
 - If `/login` unexpectedly returns `404` during local browser QA, suspect a stale or wedged Next dev server before changing route code.

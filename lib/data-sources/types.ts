@@ -2,8 +2,11 @@ import type { Role } from "@/lib/rbac/rbac-middleware";
 
 export type DataSourceKind = "csv" | "demo";
 export type DataSourceLifecycleStatus = "processing" | "ready" | "error";
+export type DataSourceHealthStatus = "healthy" | "warning" | "syncing" | "error";
 export type DataSourceSyncStatus = "synced" | "syncing" | "attention" | "paused";
+export type DataSourceCredentialStatus = "valid" | "expiring" | "manual";
 export type DatasetStatus = "ready" | "profiling" | "needs_review" | "error";
+export type VisibleDatasetStatus = Exclude<DatasetStatus, "error">;
 export type DatasetApprovalStatus = "draft" | "active" | "approved" | "archived";
 export type ColumnDataType = "text" | "integer" | "float" | "boolean" | "date" | "timestamp";
 export type ColumnSemanticRole =
@@ -14,6 +17,42 @@ export type ColumnSemanticRole =
   | "timestamp"
   | "pii";
 export type SuggestedAggregation = "sum" | "count" | "avg" | "max" | "min";
+export type SemanticSuggestionType = "metric" | "dimension" | "relationship" | "policy";
+export type DataSourceIssueSeverity = "info" | "warning" | "critical";
+export type SyncRunStatus = "success" | "running" | "warning" | "failed";
+
+export interface MetricMindDataSource {
+  id: string;
+  name: string;
+  type: DataSourceKind;
+  provider: string;
+  category: string;
+  status: DataSourceHealthStatus;
+  syncStatus: DataSourceSyncStatus;
+  healthScore: number;
+  rowCount: number;
+  datasetCount: number;
+  issueCount: number;
+  owner: string;
+  region: string;
+  credentialStatus: DataSourceCredentialStatus;
+  connectorVersion: string;
+  lastSyncedAt: string;
+  nextSyncAt: string | null;
+  description: string;
+  tags: string[];
+}
+
+export interface ConnectorGalleryItem {
+  id: string;
+  name: string;
+  provider: string;
+  category: string;
+  description: string;
+  setupTime: string;
+  availability: "connected" | "available" | "beta" | "coming_soon";
+  recommendedFor: string;
+}
 
 export interface ParsedCsv {
   headers: string[];
@@ -44,11 +83,68 @@ export interface NormalizedDatasetRow {
 
 export interface SemanticSuggestion {
   id: string;
-  type: "metric" | "dimension" | "relationship" | "policy";
+  type: SemanticSuggestionType;
   title: string;
   description: string;
   confidence: number;
   actionLabel: string;
+}
+
+export interface MetricMindDataset {
+  id: string;
+  sourceId: string;
+  name: string;
+  displayName: string;
+  description: string;
+  rowCount: number;
+  columnCount: number;
+  primaryKey: string;
+  updatedAt: string;
+  freshness: string;
+  qualityScore: number;
+  semanticCoverage: number;
+  piiColumnCount: number;
+  owner: string;
+  status: VisibleDatasetStatus;
+  sampleQuestion: string;
+  semanticSuggestions: SemanticSuggestion[];
+}
+
+export interface DatasetColumn {
+  name: string;
+  dataType: string;
+  nullable: boolean;
+  semanticRole: ColumnSemanticRole;
+  semanticType: string;
+  description: string;
+  sampleValues: string[];
+  qualityScore: number;
+  uniqueness: string;
+  suggestedAggregation?: SuggestedAggregation;
+}
+
+export interface DataSourceIssue {
+  id: string;
+  sourceId: string;
+  datasetId?: string;
+  severity: DataSourceIssueSeverity;
+  status: "open" | "acknowledged" | "resolved";
+  title: string;
+  description: string;
+  detectedAt: string;
+  recommendation: string;
+}
+
+export interface SyncRun {
+  id: string;
+  sourceId: string;
+  status: SyncRunStatus;
+  startedAt: string;
+  duration: string;
+  rowsSynced: number;
+  datasetsSynced: number;
+  triggeredBy: string;
+  message: string;
 }
 
 export interface DatasetProfile {
@@ -73,11 +169,11 @@ export interface DatasetProfile {
 export interface DataSourcesPageData {
   workspaceId: string | null;
   role: Role | null;
-  sources: import("@/lib/mock-data/data-sources").MetricMindDataSource[];
-  datasets: import("@/lib/mock-data/datasets").MetricMindDataset[];
-  columnsByDatasetId: Record<string, import("@/lib/mock-data/dataset-columns").DatasetColumn[]>;
-  issues: import("@/lib/mock-data/data-source-issues").DataSourceIssue[];
-  syncRuns: import("@/lib/mock-data/sync-runs").SyncRun[];
+  sources: MetricMindDataSource[];
+  datasets: MetricMindDataset[];
+  columnsByDatasetId: Record<string, DatasetColumn[]>;
+  issues: DataSourceIssue[];
+  syncRuns: SyncRun[];
 }
 
 export type ActionResult<T> =

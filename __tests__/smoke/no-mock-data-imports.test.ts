@@ -3,9 +3,8 @@ import * as fs from "fs";
 import * as path from "path";
 
 /**
- * Smoke test: Ensures no production page files under app/(protected)/
- * import from lib/mock-data. Mock data files should only be used in
- * tests and the demo page.
+ * Smoke test: Ensures production app modules do not import lib/mock-data.
+ * Mock data files should only be used in tests and public demo surfaces.
  *
  * Validates: Requirements 9.1, 9.2
  */
@@ -32,14 +31,17 @@ function getAllFiles(dir: string, extensions: string[]): string[] {
   return results;
 }
 
-describe("Smoke: No mock data imports in production pages", () => {
-  const protectedDir = path.resolve(
-    __dirname,
-    "../../app/(protected)"
+describe("Smoke: No mock data imports in production modules", () => {
+  const repoRoot = path.resolve(__dirname, "../..");
+  const productionDirs = ["app/(protected)", "components", "lib"].map((dir) =>
+    path.resolve(repoRoot, dir)
   );
 
-  it("should have no imports from lib/mock-data in any production page file", () => {
-    const files = getAllFiles(protectedDir, [".ts", ".tsx"]);
+  it("should have no imports from lib/mock-data in production app modules", () => {
+    const files = productionDirs
+      .flatMap((dir) => getAllFiles(dir, [".ts", ".tsx"]))
+      .filter((file) => !file.includes(`${path.sep}lib${path.sep}mock-data${path.sep}`))
+      .filter((file) => !file.endsWith(".test.ts") && !file.endsWith(".test.tsx"));
 
     expect(files.length).toBeGreaterThan(0);
 
@@ -49,10 +51,7 @@ describe("Smoke: No mock data imports in production pages", () => {
     for (const file of files) {
       const content = fs.readFileSync(file, "utf-8");
       if (mockDataPattern.test(content)) {
-        const relativePath = path.relative(
-          path.resolve(__dirname, "../.."),
-          file
-        );
+        const relativePath = path.relative(repoRoot, file);
         violations.push(relativePath);
       }
     }

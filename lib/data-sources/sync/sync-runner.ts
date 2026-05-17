@@ -9,7 +9,7 @@ export interface SyncRunnerInput {
   sourceName: string;
 }
 
-export async function runMockSync(input: SyncRunnerInput) {
+export async function runMetadataSync(input: SyncRunnerInput) {
   const started = Date.now();
   const syncRun = await input.repository.createSyncRun({
     workspaceId: input.workspaceId,

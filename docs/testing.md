@@ -46,7 +46,7 @@ Important: `__tests__/e2e/full-flow.test.ts` is a mocked service integration sui
 
 ## High-Value Tests To Know
 
-- `__tests__/smoke/no-mock-data-imports.test.ts`: protected production page files must not import `lib/mock-data`.
+- `__tests__/smoke/no-mock-data-imports.test.ts`: production app modules must not import `lib/mock-data`.
 - `lib/semantic/semantic-query-compiler.test.ts`: protects SQL compiler behavior.
 - `lib/semantic/semantic-layer-service.test.ts`: protects semantic CRUD/service behavior.
 - `lib/query/query-planner.test.ts`: protects natural-language query orchestration.

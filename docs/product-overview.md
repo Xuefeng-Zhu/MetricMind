@@ -52,10 +52,10 @@ The Data Sources page supports:
 - CSV upload through `/api/data-sources/upload-csv`.
 - Server-side CSV parse, schema inference, row normalization, dataset profiling, and semantic suggestions.
 - Demo SaaS source creation through server actions.
-- Mock sync through `runMockSync`.
+- Manual metadata sync records for CSV and demo sources.
 - Creating a semantic model from a dataset.
 
-Some non-demo connectors in the connector gallery are mocked placeholders. Do not document them as fully implemented integrations.
+The connector gallery exposes only currently implemented CSV upload and demo dataset creation. Do not document warehouse or SaaS connectors as implemented integrations until backend connectors exist.
 
 ### Semantic Layer
 

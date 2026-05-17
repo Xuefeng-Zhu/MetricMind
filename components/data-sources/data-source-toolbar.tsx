@@ -39,7 +39,7 @@ export function DataSourceToolbar({
   return (
     <section
       aria-label="Search and filter data sources"
-      className="rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm"
+      className="w-full rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm"
     >
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="relative min-w-0 flex-1">

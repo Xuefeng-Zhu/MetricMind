@@ -9,11 +9,6 @@ import {
   type Role,
 } from "@/lib/rbac/rbac-middleware";
 import { createWorkspaceService } from "@/lib/workspaces/workspace-service";
-import { dataSourceIssues as fallbackIssues } from "@/lib/mock-data/data-source-issues";
-import { datasetColumns as fallbackColumns } from "@/lib/mock-data/dataset-columns";
-import { dataSources as fallbackSources } from "@/lib/mock-data/data-sources";
-import { datasets as fallbackDatasets } from "@/lib/mock-data/datasets";
-import { syncRuns as fallbackSyncRuns } from "@/lib/mock-data/sync-runs";
 import { createCsvConnector } from "./connectors/csv-connector";
 import { createDemoConnector } from "./connectors/demo-connector";
 import { parseCsv } from "./csv/parse-csv";
@@ -22,7 +17,7 @@ import { normalizeRows } from "./csv/normalize-rows";
 import { profileDataset } from "./profiling/profile-dataset";
 import { generateSemanticSuggestions } from "./profiling/semantic-suggestions";
 import { createDataSourcesRepository, type DataSourcesRepository } from "./repository";
-import { runMockSync } from "./sync/sync-runner";
+import { runMetadataSync } from "./sync/sync-runner";
 import type {
   ActionResult,
   DataSourcesPageData,
@@ -143,15 +138,15 @@ function toDatasetStatus(score: number): "ready" | "needs_review" {
   return score >= 75 ? "ready" : "needs_review";
 }
 
-function pageDataFallback(workspaceId: string | null, role: Role | null): DataSourcesPageData {
+function emptyPageData(workspaceId: string | null, role: Role | null): DataSourcesPageData {
   return {
     workspaceId,
     role,
-    sources: fallbackSources,
-    datasets: fallbackDatasets,
-    columnsByDatasetId: fallbackColumns,
-    issues: fallbackIssues,
-    syncRuns: fallbackSyncRuns,
+    sources: [],
+    datasets: [],
+    columnsByDatasetId: {},
+    issues: [],
+    syncRuns: [],
   };
 }
 
@@ -293,26 +288,22 @@ export async function getDataSourcesPageData(): Promise<DataSourcesPageData> {
   } = await insforge.auth.getUser();
 
   if (!user) {
-    return pageDataFallback(null, null);
+    return emptyPageData(null, null);
   }
 
   const profileId = await resolveProfileId(insforge, user.id);
   const workspaces = await createWorkspaceService(insforge).getByUser(profileId);
   const workspace = workspaces[0];
   if (!workspace) {
-    return pageDataFallback(null, null);
+    return emptyPageData(null, null);
   }
 
-  try {
-    const data = await repository.listPageData(workspace.id, workspace.role ?? null);
-    return {
-      workspaceId: workspace.id,
-      role: workspace.role ?? null,
-      ...data,
-    };
-  } catch {
-    return pageDataFallback(workspace.id, workspace.role ?? null);
-  }
+  const data = await repository.listPageData(workspace.id, workspace.role ?? null);
+  return {
+    workspaceId: workspace.id,
+    role: workspace.role ?? null,
+    ...data,
+  };
 }
 
 export async function uploadCsvDataset(input: {
@@ -501,7 +492,7 @@ export async function syncDataSource(input: z.infer<typeof syncInputSchema>) {
   );
 
   try {
-    const result = await runMockSync({
+    const result = await runMetadataSync({
       repository: context.repository,
       workspaceId: context.workspaceId,
       dataSourceId: source.id,

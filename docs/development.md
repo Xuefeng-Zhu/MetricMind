@@ -81,7 +81,7 @@ Use these existing patterns:
 - Use `withRBAC` or equivalent role checks for workspace-scoped API routes.
 - Use `useApiQuery` and `useApiMutation` from client components that call workspace-scoped APIs.
 - Use existing UI primitives under `components/ui`.
-- Use deterministic mock data under `lib/mock-data` only for demo, tests, or explicit fallbacks.
+- Use deterministic mock data under `lib/mock-data` only for tests and public demo surfaces. Production app modules should render real backend state or explicit empty/error states instead of sample records.
 
 ## Adding Schema Changes
 

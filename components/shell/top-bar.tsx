@@ -61,14 +61,16 @@ export function TopBar({ title }: TopBarProps) {
   }
 
   return (
-    <header className="h-16 border-b border-[#E5E7EB] bg-white flex items-center justify-between px-6">
+    <header className="h-16 border-b border-[#E5E7EB] bg-white flex items-center justify-between gap-3 px-4 sm:px-6">
       {/* Left: Page Title */}
-      <span className="text-lg font-semibold text-[#111827]">{pageTitle}</span>
+      <span className="min-w-0 truncate text-base font-semibold text-[#111827] sm:text-lg">
+        {pageTitle}
+      </span>
 
       {/* Right: Search, Notifications, Avatar */}
-      <div className="flex items-center gap-4">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-4">
         {/* Search Input */}
-        <div className="relative">
+        <div className="relative hidden sm:block">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#4B5563]" />
             <input
