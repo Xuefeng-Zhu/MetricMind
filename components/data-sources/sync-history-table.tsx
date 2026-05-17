@@ -1,6 +1,6 @@
 import { RefreshCw } from "lucide-react";
 
-import type { SyncRun } from "@/lib/mock-data/sync-runs";
+import type { SyncRun } from "@/lib/data-sources/types";
 
 interface SyncHistoryTableProps {
   syncRuns: SyncRun[];
@@ -35,7 +35,7 @@ export function SyncHistoryTable({ syncRuns }: SyncHistoryTableProps) {
       <div className="flex items-center justify-between gap-3 border-b border-[#E5E7EB] p-4">
         <div>
           <h2 className="text-base font-semibold text-[#111827]">Sync history</h2>
-          <p className="text-sm text-[#6B7280]">Recent mock sync runs for the selected source.</p>
+          <p className="text-sm text-[#6B7280]">Recent sync runs for the selected source.</p>
         </div>
         <RefreshCw className="h-5 w-5 text-[#6B7280]" aria-hidden="true" />
       </div>

@@ -1,8 +1,7 @@
 import { AlertTriangle, CheckCircle2, CircleDashed, XCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import type { DataSourceIssue } from "@/lib/mock-data/data-source-issues";
-import type { MetricMindDataSource } from "@/lib/mock-data/data-sources";
+import type { DataSourceIssue, MetricMindDataSource } from "@/lib/data-sources/types";
 
 interface SourceHealthChecklistProps {
   source: MetricMindDataSource | null;

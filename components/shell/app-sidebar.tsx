@@ -44,7 +44,7 @@ export function AppSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed left-0 top-0 w-[260px] h-screen bg-[#1E293B] text-white flex flex-col">
+    <aside className="fixed left-0 top-0 hidden h-screen w-[260px] flex-col bg-[#1E293B] text-white md:flex">
       {/* Logo */}
       <div className="px-5 py-5">
         <Link href="/app" className="flex items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">

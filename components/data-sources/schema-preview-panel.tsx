@@ -4,10 +4,13 @@ import { Button } from "@/components/ui/button";
 import { ColumnSchemaTable } from "./column-schema-table";
 import { SemanticSuggestionsCard } from "./semantic-suggestions-card";
 import { SourceHealthChecklist } from "./source-health-checklist";
-import type { DatasetColumn } from "@/lib/mock-data/dataset-columns";
-import type { DataSourceIssue } from "@/lib/mock-data/data-source-issues";
-import type { MetricMindDataSource } from "@/lib/mock-data/data-sources";
-import type { MetricMindDataset, SemanticSuggestion } from "@/lib/mock-data/datasets";
+import type {
+  DataSourceIssue,
+  DatasetColumn,
+  MetricMindDataSource,
+  MetricMindDataset,
+  SemanticSuggestion,
+} from "@/lib/data-sources/types";
 
 interface SchemaPreviewPanelProps {
   source: MetricMindDataSource | null;

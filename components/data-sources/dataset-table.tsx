@@ -1,7 +1,7 @@
 import { BrainCircuit, ChevronRight, Table2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import type { MetricMindDataset } from "@/lib/mock-data/datasets";
+import type { MetricMindDataset } from "@/lib/data-sources/types";
 
 interface DatasetTableProps {
   datasets: MetricMindDataset[];

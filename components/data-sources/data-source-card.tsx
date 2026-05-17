@@ -1,29 +1,23 @@
 import {
   BarChart3,
-  Cloud,
-  CreditCard,
   Database,
   FileText,
-  LifeBuoy,
-  RadioTower,
+  Grid3X3,
+  HardDrive,
+  MoveRight,
   RefreshCw,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import Link from "next/link";
 
-import type { MetricMindDataSource } from "@/lib/mock-data/data-sources";
+import type { MetricMindDataSource } from "@/lib/data-sources/types";
+import { formatCompact, formatDateTime } from "./data-source-view-model";
 
 interface DataSourceCardProps {
   source: MetricMindDataSource;
-  selected: boolean;
-  onSelect: (sourceId: string) => void;
 }
 
 const sourceIcons: Record<MetricMindDataSource["type"], LucideIcon> = {
-  warehouse: Database,
-  payments: CreditCard,
-  events: RadioTower,
-  crm: Cloud,
-  support: LifeBuoy,
   demo: BarChart3,
   csv: FileText,
 };
@@ -42,43 +36,16 @@ const syncStatusLabels: Record<MetricMindDataSource["syncStatus"], string> = {
   paused: "Paused",
 };
 
-function formatCompact(value: number): string {
-  return new Intl.NumberFormat("en", {
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(value);
-}
-
-function formatDateTime(value: string): string {
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
-export function DataSourceCard({ source, selected, onSelect }: DataSourceCardProps) {
+export function DataSourceCard({ source }: DataSourceCardProps) {
   const Icon = sourceIcons[source.type] ?? Database;
 
   return (
-    <button
-      type="button"
-      aria-pressed={selected}
-      onClick={() => onSelect(source.id)}
-      className={`group flex h-full min-h-[220px] flex-col rounded-lg border bg-white p-4 text-left shadow-sm transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB] ${
-        selected
-          ? "border-[#2563EB] ring-1 ring-[#2563EB]"
-          : "border-[#E5E7EB] hover:border-[#93C5FD] hover:shadow-md"
-      }`}
+    <article
+      className="group flex h-full min-h-[248px] min-w-0 flex-col rounded-lg border border-[#E5E7EB] bg-white p-5 shadow-sm shadow-slate-200/60 transition-all hover:-translate-y-0.5 hover:border-[#BFDBFE] hover:shadow-md"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
-          <div
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md ${
-              selected ? "bg-[#EFF6FF] text-[#2563EB]" : "bg-[#F3F4F6] text-[#4B5563]"
-            }`}
-          >
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-[#DBEAFE] bg-[#F8FAFF] text-[#2563EB]">
             <Icon className="h-5 w-5" aria-hidden="true" />
           </div>
           <div className="min-w-0">
@@ -101,21 +68,21 @@ export function DataSourceCard({ source, selected, onSelect }: DataSourceCardPro
         {source.description}
       </p>
 
-      <div className="mt-4 grid grid-cols-3 gap-3 border-y border-[#E5E7EB] py-3">
+      <div className="mt-4 grid grid-cols-2 gap-4 border-y border-[#E5E7EB] py-3">
         <div>
-          <p className="text-xs font-medium text-[#6B7280]">Datasets</p>
+          <p className="flex items-center gap-1.5 text-xs font-medium text-[#6B7280]">
+            <Grid3X3 className="h-3.5 w-3.5" aria-hidden="true" />
+            Datasets
+          </p>
           <p className="mt-1 text-sm font-semibold text-[#111827]">{source.datasetCount}</p>
         </div>
         <div>
-          <p className="text-xs font-medium text-[#6B7280]">Rows</p>
+          <p className="flex items-center gap-1.5 text-xs font-medium text-[#6B7280]">
+            <HardDrive className="h-3.5 w-3.5" aria-hidden="true" />
+            Rows
+          </p>
           <p className="mt-1 text-sm font-semibold text-[#111827]">
             {formatCompact(source.rowCount)}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs font-medium text-[#6B7280]">Health</p>
-          <p className="mt-1 text-sm font-semibold text-[#111827]">
-            {source.healthScore}%
           </p>
         </div>
       </div>
@@ -139,7 +106,14 @@ export function DataSourceCard({ source, selected, onSelect }: DataSourceCardPro
           <span className="truncate">{source.owner}</span>
           <span>{formatDateTime(source.lastSyncedAt)}</span>
         </div>
+        <Link
+          href={`/app/data-sources/${source.id}`}
+          className="mt-1 inline-flex items-center justify-center gap-2 border-t border-[#E5E7EB] pt-3 text-sm font-semibold text-[#2563EB] transition-colors hover:text-[#1D4ED8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+        >
+          View details
+          <MoveRight className="h-4 w-4" aria-hidden="true" />
+        </Link>
       </div>
-    </button>
+    </article>
   );
 }

@@ -123,7 +123,7 @@ npm run build
 git diff --check
 ```
 
-Docs-only changes should at least pass `git diff --check` and local markdown link checks. Running the full suite is still useful because tests enforce repo assumptions such as protected production pages not importing mock data.
+Docs-only changes should at least pass `git diff --check` and local markdown link checks. Running the full suite is still useful because tests enforce repo assumptions such as production app modules not importing mock data.
 
 ## Current Gaps
 

@@ -1,4 +1,4 @@
-import type { DatasetColumn } from "@/lib/mock-data/dataset-columns";
+import type { DatasetColumn } from "@/lib/data-sources/types";
 
 interface ColumnSchemaTableProps {
   columns: DatasetColumn[];

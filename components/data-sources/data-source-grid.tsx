@@ -1,18 +1,16 @@
 import { Database } from "lucide-react";
 
 import { DataSourceCard } from "./data-source-card";
-import type { MetricMindDataSource } from "@/lib/mock-data/data-sources";
+import type { MetricMindDataSource } from "@/lib/data-sources/types";
 
 interface DataSourceGridProps {
   sources: MetricMindDataSource[];
-  selectedSourceId: string | null;
-  onSelectSource: (sourceId: string) => void;
+  hasActiveFilters?: boolean;
 }
 
 export function DataSourceGrid({
   sources,
-  selectedSourceId,
-  onSelectSource,
+  hasActiveFilters = false,
 }: DataSourceGridProps) {
   if (sources.length === 0) {
     return (
@@ -24,33 +22,22 @@ export function DataSourceGrid({
           <Database className="h-6 w-6" aria-hidden="true" />
         </div>
         <h2 className="mt-4 text-base font-semibold text-[#111827]">
-          No matching data sources
+          {hasActiveFilters ? "No matching data sources" : "No data sources connected"}
         </h2>
         <p className="mt-2 text-sm text-[#6B7280]">
-          Adjust the search query or status filter to find a connected source.
+          {hasActiveFilters
+            ? "Adjust the search query or status filter to find a connected source."
+            : "Upload a CSV or create the demo dataset to start profiling real workspace data."}
         </p>
       </section>
     );
   }
 
   return (
-    <section aria-label="Connected data sources" className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-[#111827]">Connected sources</h2>
-          <p className="text-sm text-[#6B7280]">
-            Select a source to inspect datasets, schema, and sync health.
-          </p>
-        </div>
-      </div>
-      <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+    <section aria-label="Connected data sources">
+      <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
         {sources.map((source) => (
-          <DataSourceCard
-            key={source.id}
-            source={source}
-            selected={source.id === selectedSourceId}
-            onSelect={onSelectSource}
-          />
+          <DataSourceCard key={source.id} source={source} />
         ))}
       </div>
     </section>

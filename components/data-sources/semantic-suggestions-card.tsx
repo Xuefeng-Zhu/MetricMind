@@ -2,7 +2,7 @@ import { BrainCircuit, GitBranch, KeyRound, ShieldCheck, Sparkles } from "lucide
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import type { SemanticSuggestion, SemanticSuggestionType } from "@/lib/mock-data/datasets";
+import type { SemanticSuggestion, SemanticSuggestionType } from "@/lib/data-sources/types";
 
 interface SemanticSuggestionsCardProps {
   suggestions: SemanticSuggestion[];

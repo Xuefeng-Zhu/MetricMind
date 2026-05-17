@@ -16,9 +16,9 @@ export default function AppLayout({
         Skip to content
       </a>
       <AppSidebar />
-      <div className="ml-[260px] min-h-screen bg-[#F6F8FB]">
+      <div className="min-h-screen bg-[#F6F8FB] md:ml-[260px]">
         <TopBar />
-        <main id="main-content" className="p-6">
+        <main id="main-content" className="p-4 sm:p-6">
           {children}
         </main>
       </div>

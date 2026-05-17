@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import type { ConnectorGalleryItem } from "@/lib/mock-data/data-sources";
+import type { ConnectorGalleryItem } from "@/lib/data-sources/types";
 
 interface ConnectorGalleryDialogProps {
   open: boolean;

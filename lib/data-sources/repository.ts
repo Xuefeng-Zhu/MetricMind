@@ -1,14 +1,14 @@
 import type { InsForgeDatabaseClient } from "@/lib/insforge/types";
-import type { DataSourceIssue } from "@/lib/mock-data/data-source-issues";
-import type { DatasetColumn } from "@/lib/mock-data/dataset-columns";
-import type { MetricMindDataSource } from "@/lib/mock-data/data-sources";
-import type { MetricMindDataset } from "@/lib/mock-data/datasets";
-import type { SyncRun } from "@/lib/mock-data/sync-runs";
 import type {
+  DataSourceIssue,
+  DatasetColumn,
   DatasetProfile,
   InferredColumn,
+  MetricMindDataSource,
+  MetricMindDataset,
   NormalizedDatasetRow,
   SemanticSuggestion,
+  SyncRun,
 } from "./types";
 
 type DbError = { message?: string; code?: string } | null;

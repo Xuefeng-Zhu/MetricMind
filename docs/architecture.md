@@ -175,9 +175,9 @@ Important migration groups:
 ## Mock, Demo, And Fallback Data
 
 - `app/(public)/demo/page.tsx` is intentionally hardcoded demo behavior.
-- `lib/mock-data/` holds deterministic sample data for tests, demo, and fallback UI data.
-- Protected production page files should not import `lib/mock-data` directly. The smoke test in `__tests__/smoke/no-mock-data-imports.test.ts` enforces this.
-- `components/data-sources/data-sources-page.tsx` has fallback mock data because it can render without backend page data.
+- `lib/mock-data/` holds deterministic sample data for tests and public demo surfaces only.
+- Production app modules should not import `lib/mock-data` directly. The smoke test in `__tests__/smoke/no-mock-data-imports.test.ts` enforces this across protected pages, shared components, and `lib/` service code.
+- `components/data-sources/data-sources-page.tsx` renders empty real workspace state when no backend page data is available; it does not hydrate production UI from sample records.
 
 ## Known Architecture Gaps
 

@@ -34,7 +34,7 @@ Currently implemented:
 - CSV upload through `app/api/data-sources/upload-csv/route.ts`.
 - CSV parsing, schema inference, row normalization, profiling, and semantic suggestions.
 - Dataset rows stored as JSONB in `dataset_rows`.
-- Data source sync records through a mock sync runner.
+- Manual metadata sync records for CSV and demo sources.
 - Dataset column metadata updates.
 - Semantic model creation from a dataset.
 
@@ -60,7 +60,7 @@ Key paths:
 - `lib/data-sources/connectors/demo-connector.ts`: demo connector implementation.
 - `lib/data-sources/csv/`: parser, schema inference, and row normalization.
 - `lib/data-sources/profiling/`: profile generation, readiness score, semantic suggestions.
-- `lib/data-sources/sync/sync-runner.ts`: current mock sync behavior.
+- `lib/data-sources/sync/sync-runner.ts`: manual metadata sync bookkeeping for implemented source types.
 - `migrations/20260516090000_data-sources-backend.sql`: canonical data-source backend schema and RLS policies.
 
 There is also an older `lib/data-sources/data-source-service.ts` used by `app/api/data-sources/route.ts`. Check the caller before editing; similar names do not mean the same flow.
