@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   INSFORGE_ACCESS_COOKIE,
+  INSFORGE_KEEP_SIGNED_IN_COOKIE,
   INSFORGE_OAUTH_VERIFIER_COOKIE,
   INSFORGE_REFRESH_COOKIE,
 } from "@/lib/insforge/auth-cookies";
@@ -90,7 +91,31 @@ describe("OAuth callback route", () => {
     const setCookie = response.headers.get("set-cookie");
     expect(setCookie).toContain(INSFORGE_ACCESS_COOKIE);
     expect(setCookie).toContain(INSFORGE_REFRESH_COOKIE);
+    expect(setCookie).toContain(`${INSFORGE_KEEP_SIGNED_IN_COOKIE}=true`);
     expect(setCookie).toContain(INSFORGE_OAUTH_VERIFIER_COOKIE);
+  });
+
+  it("honors the keep-signed-in preference from OAuth initiation", async () => {
+    const user = { id: "user-123", email: "person@example.com" };
+    mockExchangeOAuthCode.mockResolvedValue({
+      data: {
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+        user,
+      },
+      error: null,
+    });
+    mockEnsureProfile.mockResolvedValue({ id: "profile-123" });
+
+    const response = await GET(
+      createRequest("/api/auth/callback?insforge_code=oauth-code", {
+        [INSFORGE_OAUTH_VERIFIER_COOKIE]: "verifier-123",
+        [INSFORGE_KEEP_SIGNED_IN_COOKIE]: "false",
+      })
+    );
+    const setCookie = response.headers.get("set-cookie") ?? "";
+
+    expect(setCookie).toContain(`${INSFORGE_KEEP_SIGNED_IN_COOKIE}=false`);
   });
 
   it("requires the PKCE verifier cookie", async () => {

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import {
   INSFORGE_ACCESS_COOKIE,
+  INSFORGE_KEEP_SIGNED_IN_COOKIE,
   INSFORGE_REFRESH_COOKIE,
 } from "./auth-cookies";
 
@@ -35,9 +36,11 @@ import { createClient } from "./server";
 
 function setAuthCookies({
   accessToken = "access-token",
+  keepSignedIn = "true",
   refreshToken = "refresh-token",
 }: {
   accessToken?: string;
+  keepSignedIn?: string;
   refreshToken?: string;
 } = {}) {
   mockCookieGet.mockImplementation((name: string) => {
@@ -47,6 +50,10 @@ function setAuthCookies({
 
     if (name === INSFORGE_REFRESH_COOKIE) {
       return { name, value: refreshToken };
+    }
+
+    if (name === INSFORGE_KEEP_SIGNED_IN_COOKIE) {
+      return { name, value: keepSignedIn };
     }
 
     return undefined;
@@ -107,6 +114,36 @@ describe("InsForge server client", () => {
       data: { user: refreshedUser },
       error: null,
     });
+  });
+
+  it("refreshes expired access tokens as session cookies when keep signed in is disabled", async () => {
+    setAuthCookies({ keepSignedIn: "false" });
+    mockGetUser.mockResolvedValue({
+      data: { user: null },
+      error: { message: "expired" },
+    });
+    mockRefreshSession.mockResolvedValue({
+      data: {
+        accessToken: "new-access-token",
+        refreshToken: "new-refresh-token",
+        user: { id: "user-123" },
+      },
+      error: null,
+    });
+
+    const client = createClient();
+    await client.auth.getUser();
+
+    expect(mockCookieSet).toHaveBeenCalledWith(
+      INSFORGE_ACCESS_COOKIE,
+      "new-access-token",
+      expect.not.objectContaining({ maxAge: expect.any(Number) })
+    );
+    expect(mockCookieSet).toHaveBeenCalledWith(
+      INSFORGE_REFRESH_COOKIE,
+      "new-refresh-token",
+      expect.not.objectContaining({ maxAge: expect.any(Number) })
+    );
   });
 
   it("does not refresh when no server refresh token is available", async () => {

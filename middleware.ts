@@ -3,8 +3,11 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   accessCookieMaxAge,
   authCookieOptions,
+  authCookieOptionsForMaxAge,
   INSFORGE_ACCESS_COOKIE,
+  INSFORGE_KEEP_SIGNED_IN_COOKIE,
   INSFORGE_REFRESH_COOKIE,
+  readKeepSignedInCookie,
   refreshCookieMaxAge,
 } from "@/lib/insforge/auth-cookies";
 
@@ -61,6 +64,10 @@ function redirectToLogin(request: NextRequest) {
     ...authCookieOptions,
     maxAge: 0,
   });
+  response.cookies.set(INSFORGE_KEEP_SIGNED_IN_COOKIE, "", {
+    ...authCookieOptions,
+    maxAge: 0,
+  });
   return response;
 }
 
@@ -89,17 +96,18 @@ export async function middleware(request: NextRequest) {
     return redirectToLogin(request);
   }
 
+  const keepSignedIn = readKeepSignedInCookie(
+    request.cookies.get(INSFORGE_KEEP_SIGNED_IN_COOKIE)?.value
+  );
   const response = NextResponse.next();
   response.cookies.set(INSFORGE_ACCESS_COOKIE, refreshed.accessToken, {
-    ...authCookieOptions,
-    maxAge: accessCookieMaxAge,
+    ...authCookieOptionsForMaxAge(accessCookieMaxAge, keepSignedIn),
   });
   response.cookies.set(
     INSFORGE_REFRESH_COOKIE,
     refreshed.refreshToken ?? refreshToken,
     {
-      ...authCookieOptions,
-      maxAge: refreshCookieMaxAge,
+      ...authCookieOptionsForMaxAge(refreshCookieMaxAge, keepSignedIn),
     }
   );
 
