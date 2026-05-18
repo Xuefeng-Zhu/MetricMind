@@ -314,6 +314,32 @@ describe("DataSourcesPage", () => {
     expect(screen.getByLabelText("Host")).toBeInTheDocument();
     expect(screen.getByLabelText("SSL mode")).toBeInTheDocument();
   });
+
+  it("renders friendly external connector validation errors", async () => {
+    render(
+      <DataSourcesPage
+        initialData={pageData}
+        testExternalDataSourceAction={vi.fn().mockResolvedValue({
+          ok: false,
+          status: 400,
+          error:
+            "Host is required. Database is required. Username is required. Password is required.",
+        })}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /connect source/i }));
+    const postgresConnector = screen.getByText("Postgres").closest("article");
+    expect(postgresConnector).not.toBeNull();
+    fireEvent.click(within(postgresConnector as HTMLElement).getByRole("button", { name: "Connect" }));
+    fireEvent.click(screen.getByRole("button", { name: "Test connection" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Host is required/)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/too_small/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/minimum/)).not.toBeInTheDocument();
+  });
 });
 
 describe("DataSourceDetailPage", () => {

@@ -69,8 +69,8 @@ Safety layers:
 - `GET` returns endpoint/model metadata only.
 - `PUT` accepts `endpointUrl`, `modelName`, and `apiKey`.
 - The database column is named `encrypted_api_key`.
-
-TODO: verify whether the API key is encrypted before storage or if encryption is expected from the backend/database layer. Until verified, do not document or promise stronger behavior than "not returned to the client."
+- `PUT` encrypts API keys with `DATA_SOURCE_CREDENTIALS_KEY` before storage.
+- Existing plaintext rows are read for compatibility, but new writes are encrypted.
 
 ## CSV Upload And Data Storage
 
@@ -118,7 +118,7 @@ Audit logging is often non-blocking so user-facing flows do not fail solely beca
 
 - Never commit `.env`, `.env.local`, or secret-bearing files.
 - Never print InsForge anon keys, access tokens, refresh tokens, OAuth verifier values, AI API keys, or credential payloads.
-- Never expose `DATA_SOURCE_CREDENTIALS_KEY` with a public env prefix.
+- Never expose `DATA_SOURCE_CREDENTIALS_KEY` with a public env prefix; it protects saved connector credentials and AI provider API keys.
 - When adding docs or tests, use placeholder values only.
 
 ## High-Risk Files

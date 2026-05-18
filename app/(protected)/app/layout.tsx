@@ -18,7 +18,7 @@ export default function AppLayout({
       <AppSidebar />
       <div className="min-h-screen bg-[#F6F8FB] md:ml-[260px]">
         <TopBar />
-        <main id="main-content" className="p-4 sm:p-6">
+        <main id="main-content" className="p-4 pb-24 sm:p-6 md:pb-6">
           {children}
         </main>
       </div>

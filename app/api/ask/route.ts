@@ -10,6 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { decryptAIProviderApiKey } from '@/lib/ai/api-key-crypto';
 import { withRBAC, RBACContext } from '@/lib/rbac/rbac-middleware';
 import { createClient } from '@/lib/insforge/server';
 import { createQueryPlanner, type QueryResult } from '@/lib/query/query-planner';
@@ -110,7 +111,7 @@ async function handler(req: NextRequest, context: RBACContext): Promise<NextResp
       ? {
           endpoint: aiConfig.endpoint_url,
           model: aiConfig.model_name,
-          apiKey: aiConfig.encrypted_api_key,
+          apiKey: decryptAIProviderApiKey(aiConfig.encrypted_api_key),
         }
       : undefined;
 

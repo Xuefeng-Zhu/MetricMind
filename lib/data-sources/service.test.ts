@@ -63,6 +63,7 @@ import {
   createSemanticModelFromDataset,
   syncDataSource,
   testExternalDataSource,
+  toActionResult,
   uploadCsvDataset,
 } from "./service";
 import { encryptCredentialPayload } from "./credential-crypto";
@@ -322,6 +323,30 @@ describe("data sources service", () => {
     expect(repositoryMock.insertAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({ action: "datasource.connection_tested" })
     );
+  });
+
+  it("formats external connector validation failures as field messages", async () => {
+    const result = await toActionResult(() =>
+      testExternalDataSource({
+        type: "postgres",
+        workspaceId,
+        name: "Analytics Postgres",
+        host: "",
+        port: 5432,
+        database: "",
+        schema: "public",
+        username: "",
+        password: "",
+        sslMode: "require",
+      })
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      status: 400,
+      error:
+        "Host is required. Database is required. Username is required. Password is required.",
+    });
   });
 
   it("connects external sources with encrypted credentials and discovered metadata", async () => {
