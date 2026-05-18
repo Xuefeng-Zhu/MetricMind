@@ -7,6 +7,7 @@ vi.mock("@/lib/insforge/server", () => ({
 }));
 
 import { createClient } from "@/lib/insforge/server";
+import { decryptAIProviderApiKey } from "@/lib/ai/api-key-crypto";
 import { GET, PUT } from "./route";
 
 const mockCreateClient = createClient as ReturnType<typeof vi.fn>;
@@ -81,6 +82,7 @@ function createRequest(
 describe("GET /api/ai-config", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.DATA_SOURCE_CREDENTIALS_KEY = "test-ai-provider-credential-key-12345";
   });
 
   it("returns 401 when user is not authenticated", async () => {
@@ -182,6 +184,7 @@ describe("GET /api/ai-config", () => {
 describe("PUT /api/ai-config", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.DATA_SOURCE_CREDENTIALS_KEY = "test-ai-provider-credential-key-12345";
   });
 
   it("returns 401 when user is not authenticated", async () => {
@@ -327,6 +330,14 @@ describe("PUT /api/ai-config", () => {
     expect(response.status).toBe(200);
     expect(body.config).toEqual(upsertResult);
     expect(body.config.encrypted_api_key).toBeUndefined();
+
+    const tableBuilder = (insforge.from as ReturnType<typeof vi.fn>).mock.results.find(
+      (result) => result.value.upsert.mock.calls.length > 0
+    )?.value;
+    expect(tableBuilder).toBeDefined();
+    const upsertPayload = tableBuilder!.upsert.mock.calls[0][0];
+    expect(upsertPayload.encrypted_api_key).not.toContain("sk-test-key");
+    expect(decryptAIProviderApiKey(upsertPayload.encrypted_api_key)).toBe("sk-test-key");
   });
 
   it("returns 500 when upsert fails", async () => {

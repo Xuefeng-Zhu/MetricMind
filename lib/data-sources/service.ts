@@ -17,6 +17,7 @@ import {
   isExternalDataSourceType,
   toStoredExternalConnectorConfig,
 } from "./connectors/external-registry";
+import { titleize } from "./connectors/external-utils";
 import { decryptCredentialPayload, encryptCredentialPayload } from "./credential-crypto";
 import { parseCsv } from "./csv/parse-csv";
 import { inferSchema } from "./csv/infer-schema";
@@ -144,9 +145,32 @@ function ok<T>(data: T): ActionResult<T> {
 export function actionError(error: unknown, status = 500): ActionResult<never> {
   return {
     ok: false,
-    error: error instanceof Error ? error.message : "Unexpected data source error",
+    error: formatActionError(error),
     status,
   };
+}
+
+function formatActionError(error: unknown): string {
+  if (error instanceof z.ZodError) {
+    return formatZodError(error);
+  }
+
+  return error instanceof Error ? error.message : "Unexpected data source error";
+}
+
+function formatZodError(error: z.ZodError): string {
+  const messages = error.issues.map((issue) => {
+    const field = titleize(String(issue.path.at(-1) ?? "input"));
+    if (issue.code === "too_small" && issue.minimum === 1) {
+      return `${field} is required.`;
+    }
+    if (issue.code === "invalid_type") {
+      return `${field} has an invalid value.`;
+    }
+    return `${field}: ${issue.message}`;
+  });
+
+  return Array.from(new Set(messages)).join(" ");
 }
 
 function displayNameFromFile(fileName: string): string {

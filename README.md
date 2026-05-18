@@ -130,6 +130,6 @@ Docs-only changes should at least pass `git diff --check` and local markdown lin
 - No checked-in `.github/` CI workflow.
 - No checked-in deployment config.
 - No checked-in migration runner config.
-- AI provider env support and API key encryption behavior need verification before documenting stronger claims.
+- AI provider env support needs verification before documenting stronger claims.
 
 Use `TODO: verify` in docs instead of guessing when behavior is unclear.

@@ -120,9 +120,9 @@ export default function AskPage() {
   }, []);
 
   return (
-    <div className="flex h-[calc(100vh-theme(spacing.16)-theme(spacing.12))]">
+    <div className="flex min-h-[calc(100vh-theme(spacing.16)-theme(spacing.12))] flex-col overflow-hidden lg:h-[calc(100vh-theme(spacing.16)-theme(spacing.12))] lg:flex-row">
       {/* Left Sidebar - Conversation List */}
-      <aside className="w-72 bg-white border-r border-[#E5E7EB] flex flex-col shrink-0" aria-label="Conversation history">
+      <aside className="flex max-h-72 w-full shrink-0 flex-col border-b border-[#E5E7EB] bg-white lg:max-h-none lg:w-72 lg:border-b-0 lg:border-r" aria-label="Conversation history">
         <div className="p-4 border-b border-[#E5E7EB]">
           <Button
             className="w-full"
@@ -175,8 +175,8 @@ export default function AskPage() {
       </aside>
 
       {/* Center Content */}
-      <div className="flex-1 flex flex-col min-w-0" role="region" aria-label="AI answer area">
-        <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex min-h-[560px] flex-1 flex-col min-w-0" role="region" aria-label="AI answer area">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {/* Messages for selected conversation */}
           {activeConversation && messagesLoading && (
             <LoadingSkeleton lines={6} className="mb-6" />
@@ -189,8 +189,8 @@ export default function AskPage() {
                   key={msg.id}
                   className={`p-3 rounded-lg text-sm ${
                     msg.role === "user"
-                      ? "bg-[#F0F7FF] text-[#111827] ml-12"
-                      : "bg-gray-50 text-[#4B5563] mr-12"
+                      ? "bg-[#F0F7FF] text-[#111827] sm:ml-12"
+                      : "bg-gray-50 text-[#4B5563] sm:mr-12"
                   }`}
                 >
                   {msg.content}
@@ -205,7 +205,7 @@ export default function AskPage() {
               <div className="h-6 bg-gray-200 rounded w-3/4" />
               <div className="h-4 bg-gray-200 rounded w-1/4" />
               <div className="h-24 bg-gray-200 rounded w-full mt-4" />
-              <div className="flex gap-4 mt-4">
+              <div className="flex flex-col gap-4 mt-4 sm:flex-row">
                 <div className="h-20 bg-gray-200 rounded flex-1" />
                 <div className="h-20 bg-gray-200 rounded flex-1" />
                 <div className="h-20 bg-gray-200 rounded flex-1" />
@@ -240,7 +240,7 @@ export default function AskPage() {
 
               {/* Metric Cards */}
               {answer.metrics && answer.metrics.length > 0 && (
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                   {answer.metrics.map((metric) => (
                     <div
                       key={metric.label}
@@ -306,7 +306,7 @@ export default function AskPage() {
                     id="generated-sql-panel"
                     className="mt-3 bg-[#1E293B] rounded-xl p-4 overflow-x-auto"
                   >
-                    <pre className="text-sm font-mono text-gray-200 whitespace-pre-wrap">
+                    <pre className="whitespace-pre-wrap break-words text-sm font-mono text-gray-200">
                       {answer.sql}
                     </pre>
                   </div>
@@ -328,7 +328,7 @@ export default function AskPage() {
               value={question}
               onChange={(e) => setQuestion(e.target.value)}
               placeholder="Ask a question about your data..."
-              className="flex-1 h-10 px-4 rounded-lg border border-[#E5E7EB] bg-[#F6F8FB] text-sm text-[#111827] placeholder:text-[#4B5563] focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
+              className="h-10 min-w-0 flex-1 rounded-lg border border-[#E5E7EB] bg-[#F6F8FB] px-4 text-sm text-[#111827] placeholder:text-[#4B5563] focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
               disabled={askLoading}
             />
             <Button
@@ -344,7 +344,7 @@ export default function AskPage() {
       </div>
 
       {/* Right Panel */}
-      <aside className="w-80 bg-white border-l border-[#E5E7EB] flex flex-col shrink-0 overflow-y-auto" aria-label="Answer details">
+      <aside className="flex max-h-80 w-full shrink-0 flex-col overflow-y-auto border-t border-[#E5E7EB] bg-white lg:max-h-none lg:w-80 lg:border-l lg:border-t-0" aria-label="Answer details">
         {/* Citations */}
         {answer?.citations && answer.citations.length > 0 && (
           <section className="p-4 border-b border-[#E5E7EB]">

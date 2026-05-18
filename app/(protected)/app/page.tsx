@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApiQuery } from '@/hooks/use-api-query';
 import type { DashboardInsightsResponse, MetricsResponse } from '@/types/api-responses';
@@ -10,6 +11,9 @@ import { DataTable } from '@/components/data-table/data-table';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { getUserDisplayName } from '@/lib/auth/user-display';
+import { useAuthStore } from '@/stores/auth-store';
+import { Send } from 'lucide-react';
 
 const suggestedQuestions = [
   'Why did churn increase in April?',
@@ -20,6 +24,9 @@ const suggestedQuestions = [
 
 export default function WorkspaceHomePage() {
   const router = useRouter();
+  const { user } = useAuthStore();
+  const [askQuestion, setAskQuestion] = useState('');
+  const displayName = getUserDisplayName(user);
 
   // Fetch dashboard insights (KPIs, revenue, trust health)
   const {
@@ -58,9 +65,17 @@ export default function WorkspaceHomePage() {
     },
   ];
 
+  function handleAskSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = askQuestion.trim();
+    if (!trimmed) return;
+
+    router.push(`/app/ask?q=${encodeURIComponent(trimmed)}`);
+  }
+
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-[#111827]">Welcome back, Alex</h1>
+      <h1 className="text-2xl font-bold text-[#111827]">Welcome back, {displayName}</h1>
 
       {/* KPI Cards */}
       <section aria-label="Key performance indicators">
@@ -69,7 +84,7 @@ export default function WorkspaceHomePage() {
         ) : dashboardError ? (
           <ErrorState message={dashboardError} onRetry={refetchDashboard} />
         ) : (
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {dashboardData?.kpis.map((kpi) => (
               <KPICard
                 key={kpi.label}
@@ -106,29 +121,44 @@ export default function WorkspaceHomePage() {
       <section aria-label="Ask MetricMind">
         <div className="bg-white rounded-xl shadow-sm border border-[#E5E7EB] p-6">
           <h2 className="text-lg font-semibold text-[#111827] mb-4">Ask MetricMind</h2>
-          <input
-            type="text"
-            placeholder="Ask a question about your data..."
-            className="w-full rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
-            aria-label="Ask a question about your data"
-          />
-          <div className="flex flex-wrap gap-2 mt-4">
-            {suggestedQuestions.map((question) => (
+          <form onSubmit={handleAskSubmit}>
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                value={askQuestion}
+                onChange={(event) => setAskQuestion(event.target.value)}
+                placeholder="Ask a question about your data..."
+                className="min-w-0 flex-1 rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-sm text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-transparent"
+                aria-label="Ask a question about your data"
+              />
               <Button
-                key={question}
-                variant="outline"
-                size="sm"
-                onClick={() => router.push(`/app/ask?q=${encodeURIComponent(question)}`)}
+                type="submit"
+                size="icon"
+                aria-label="Submit question"
+                disabled={!askQuestion.trim()}
               >
-                {question}
+                <Send className="h-4 w-4" />
               </Button>
-            ))}
-          </div>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-4">
+              {suggestedQuestions.map((question) => (
+                <Button
+                  key={question}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => router.push(`/app/ask?q=${encodeURIComponent(question)}`)}
+                >
+                  {question}
+                </Button>
+              ))}
+            </div>
+          </form>
         </div>
       </section>
 
       {/* Two-column: Recently Certified Metrics + Trust Health */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         {/* Recently Certified Metrics */}
         <section aria-label="Recently certified metrics">
           <div className="bg-white rounded-xl shadow-sm border border-[#E5E7EB] p-6">
@@ -138,11 +168,13 @@ export default function WorkspaceHomePage() {
             ) : metricsError ? (
               <ErrorState message={metricsError} onRetry={refetchMetrics} />
             ) : (
-              <DataTable
-                columns={metricsColumns}
-                data={metricsData?.metrics.filter((m) => m.certified) ?? []}
-                caption="Recently certified metrics with name, owner, date, and status"
-              />
+              <div className="overflow-x-auto">
+                <DataTable
+                  columns={metricsColumns}
+                  data={metricsData?.metrics.filter((m) => m.certified) ?? []}
+                  caption="Recently certified metrics with name, owner, date, and status"
+                />
+              </div>
             )}
           </div>
         </section>

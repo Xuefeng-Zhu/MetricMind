@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { encryptAIProviderApiKey } from "@/lib/ai/api-key-crypto";
 import { createClient } from "@/lib/insforge/server";
 import { hasPermission, resolveWorkspaceRole } from "@/lib/rbac/rbac-middleware";
 
@@ -180,7 +181,7 @@ export async function PUT(request: NextRequest): Promise<NextResponse> {
           workspace_id: workspaceId,
           endpoint_url: endpointUrl.trim(),
           model_name: modelName.trim(),
-          encrypted_api_key: apiKey,
+          encrypted_api_key: encryptAIProviderApiKey(apiKey),
         },
         { onConflict: "workspace_id" }
       )

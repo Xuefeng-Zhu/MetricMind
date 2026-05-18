@@ -3,15 +3,17 @@
  *
  * Validates: Requirements 1.1, 1.2, 1.3, 1.4
  */
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { vi, describe, it, expect, beforeEach } from "vitest";
+
+const mockPush = vi.hoisted(() => vi.fn());
 
 vi.mock("@/hooks/use-api-query", () => ({
   useApiQuery: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: mockPush }),
 }));
 
 vi.mock("@/components/charts/simple-line-chart", () => ({
@@ -38,6 +40,7 @@ vi.mock("@/components/ui/progress", () => ({
 
 import WorkspaceHomePage from "../page";
 import { useApiQuery } from "@/hooks/use-api-query";
+import { useAuthStore } from "@/stores/auth-store";
 
 const mockedUseApiQuery = vi.mocked(useApiQuery);
 
@@ -70,6 +73,7 @@ const mockMetrics = {
 describe("WorkspaceHomePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useAuthStore.getState().clear();
   });
 
   describe("loading state", () => {
@@ -148,6 +152,59 @@ describe("WorkspaceHomePage", () => {
       // Trust health (progress bar with AI confidence)
       expect(screen.getByTestId("progress")).toBeInTheDocument();
       expect(screen.getByText("92%")).toBeInTheDocument();
+    });
+
+    it("uses the signed-in user name in the welcome message", () => {
+      useAuthStore.getState().setUser({
+        id: "user-1",
+        email: "analyst@example.com",
+        user_metadata: { full_name: "Mina Patel" },
+      });
+
+      mockedUseApiQuery
+        .mockReturnValueOnce({
+          data: mockDashboard,
+          isLoading: false,
+          error: null,
+          refetch: vi.fn(),
+        })
+        .mockReturnValueOnce({
+          data: mockMetrics,
+          isLoading: false,
+          error: null,
+          refetch: vi.fn(),
+        });
+
+      render(<WorkspaceHomePage />);
+
+      expect(screen.getByText("Welcome back, Mina Patel")).toBeInTheDocument();
+      expect(screen.queryByText("Welcome back, Alex")).not.toBeInTheDocument();
+    });
+
+    it("submits the ask input to the AI analyst page", () => {
+      mockedUseApiQuery
+        .mockReturnValueOnce({
+          data: mockDashboard,
+          isLoading: false,
+          error: null,
+          refetch: vi.fn(),
+        })
+        .mockReturnValueOnce({
+          data: mockMetrics,
+          isLoading: false,
+          error: null,
+          refetch: vi.fn(),
+        });
+
+      render(<WorkspaceHomePage />);
+
+      const askInput = screen.getByLabelText("Ask a question about your data");
+      fireEvent.change(askInput, {
+        target: { value: "Which accounts expanded?" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Submit question" }));
+
+      expect(mockPush).toHaveBeenCalledWith("/app/ask?q=Which%20accounts%20expanded%3F");
     });
   });
 });
