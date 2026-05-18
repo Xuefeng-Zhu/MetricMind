@@ -68,7 +68,7 @@ export function createPostgresConnector(
       database: input.database,
       user: input.username,
       password: input.password,
-      ssl: input.sslMode === "require" ? { rejectUnauthorized: false } : undefined,
+      ssl: input.sslMode === "require" ? { rejectUnauthorized: true } : undefined,
       connectionTimeoutMillis: 8000,
     },
   });

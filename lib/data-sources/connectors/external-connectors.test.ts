@@ -7,6 +7,7 @@ import { createSnowflakeConnector } from "./snowflake-connector";
 describe("external metadata connectors", () => {
   it("discovers Postgres tables with quoted schema/table identifiers", async () => {
     const queries: string[] = [];
+    let clientConfig: unknown;
     const connector = createPostgresConnector(
       {
         type: "postgres",
@@ -20,37 +21,41 @@ describe("external metadata connectors", () => {
         password: "secret",
         sslMode: "require",
       },
-      () => ({
-        connect: vi.fn().mockResolvedValue(undefined),
-        end: vi.fn().mockResolvedValue(undefined),
-        query: vi.fn().mockImplementation((sql: string) => {
-          queries.push(sql);
-          if (sql.includes("information_schema.tables")) {
-            return Promise.resolve({ rows: [{ table_name: "customers" }] });
-          }
-          if (sql.includes("pg_stat_user_tables")) {
-            return Promise.resolve({ rows: [{ relname: "customers", n_live_tup: 42 }] });
-          }
-          if (sql.includes("information_schema.columns")) {
-            return Promise.resolve({
-              rows: [
-                {
-                  table_name: "customers",
-                  column_name: "customer_id",
-                  data_type: "integer",
-                  is_nullable: "NO",
-                  ordinal_position: 1,
-                },
-              ],
-            });
-          }
-          return Promise.resolve({ rows: [{ customer_id: 1 }, { customer_id: 2 }] });
-        }),
-      })
+      (config) => {
+        clientConfig = config;
+        return {
+          connect: vi.fn().mockResolvedValue(undefined),
+          end: vi.fn().mockResolvedValue(undefined),
+          query: vi.fn().mockImplementation((sql: string) => {
+            queries.push(sql);
+            if (sql.includes("information_schema.tables")) {
+              return Promise.resolve({ rows: [{ table_name: "customers" }] });
+            }
+            if (sql.includes("pg_stat_user_tables")) {
+              return Promise.resolve({ rows: [{ relname: "customers", n_live_tup: 42 }] });
+            }
+            if (sql.includes("information_schema.columns")) {
+              return Promise.resolve({
+                rows: [
+                  {
+                    table_name: "customers",
+                    column_name: "customer_id",
+                    data_type: "integer",
+                    is_nullable: "NO",
+                    ordinal_position: 1,
+                  },
+                ],
+              });
+            }
+            return Promise.resolve({ rows: [{ customer_id: 1 }, { customer_id: 2 }] });
+          }),
+        };
+      }
     );
 
     const datasets = await connector.discoverDatasets();
 
+    expect(clientConfig).toMatchObject({ ssl: { rejectUnauthorized: true } });
     expect(datasets[0]).toMatchObject({
       name: "customers",
       rowCount: 42,

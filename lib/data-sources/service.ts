@@ -23,7 +23,11 @@ import { inferSchema } from "./csv/infer-schema";
 import { normalizeRows } from "./csv/normalize-rows";
 import { profileDataset } from "./profiling/profile-dataset";
 import { generateSemanticSuggestions } from "./profiling/semantic-suggestions";
-import { createDataSourcesRepository, type DataSourcesRepository } from "./repository";
+import {
+  createDataSourcesRepository,
+  type DataSourcesRepository,
+  type ExternalDatasetMetadataSnapshot,
+} from "./repository";
 import { runMetadataSync } from "./sync/sync-runner";
 import type {
   ActionResult,
@@ -305,12 +309,57 @@ async function persistConnectorDataset(input: {
   columns: InferredColumn[];
   owner: string;
 }) {
-  const profile = profileDataset(input.rows, input.columns);
-  const suggestions = generateSemanticSuggestions(input.name, input.columns);
+  const snapshot = buildConnectorDatasetSnapshot(input);
   const dataset = await input.context.repository.createDataset({
     workspaceId: input.context.workspaceId,
     dataSourceId: input.dataSourceId,
     uploadedFileId: input.uploadedFileId,
+    name: snapshot.name,
+    displayName: snapshot.displayName,
+    description: snapshot.description,
+    rowCount: snapshot.rowCount,
+    columnCount: snapshot.columnCount,
+    primaryKey: snapshot.primaryKey,
+    status: snapshot.status,
+    qualityScore: snapshot.qualityScore,
+    semanticCoverage: snapshot.semanticCoverage,
+    piiColumnCount: snapshot.piiColumnCount,
+    owner: snapshot.owner,
+    sampleQuestion: snapshot.sampleQuestion,
+  });
+  const columns = await input.context.repository.createDatasetColumns({
+    dataSourceId: input.dataSourceId,
+    datasetId: dataset.id,
+    columns: snapshot.columns,
+  });
+  await input.context.repository.insertDatasetRows({
+    workspaceId: input.context.workspaceId,
+    datasetId: dataset.id,
+    rows: snapshot.rows,
+  });
+  const datasetProfile = await input.context.repository.createDatasetProfile({
+    workspaceId: input.context.workspaceId,
+    datasetId: dataset.id,
+    profile: snapshot.profile,
+    suggestions: snapshot.suggestions,
+  });
+
+  return { dataset, columns, profile: datasetProfile, suggestions: snapshot.suggestions };
+}
+
+function buildConnectorDatasetSnapshot(input: {
+  name: string;
+  displayName: string;
+  description: string;
+  rows: NormalizedDatasetRow[];
+  rowCount?: number;
+  columns: InferredColumn[];
+  owner: string;
+}): ExternalDatasetMetadataSnapshot {
+  const profile = profileDataset(input.rows, input.columns);
+  const suggestions = generateSemanticSuggestions(input.name, input.columns);
+
+  return {
     name: input.name,
     displayName: input.displayName,
     description: input.description,
@@ -323,50 +372,28 @@ async function persistConnectorDataset(input: {
     piiColumnCount: profile.piiColumnCount,
     owner: input.owner,
     sampleQuestion: `What changed most in ${input.displayName}?`,
-  });
-  const columns = await input.context.repository.createDatasetColumns({
-    dataSourceId: input.dataSourceId,
-    datasetId: dataset.id,
     columns: input.columns,
-  });
-  await input.context.repository.insertDatasetRows({
-    workspaceId: input.context.workspaceId,
-    datasetId: dataset.id,
     rows: input.rows,
-  });
-  const datasetProfile = await input.context.repository.createDatasetProfile({
-    workspaceId: input.context.workspaceId,
-    datasetId: dataset.id,
     profile,
     suggestions,
-  });
-
-  return { dataset, columns, profile: datasetProfile, suggestions };
+  };
 }
 
-async function persistDiscoveredDatasets(input: {
-  context: AuthenticatedContext;
-  dataSourceId: string;
+function buildDiscoveredDatasetSnapshots(input: {
   datasets: ConnectorDataset[];
   owner: string;
 }) {
-  const persisted = [];
-  for (const dataset of input.datasets) {
-    persisted.push(
-      await persistConnectorDataset({
-        context: input.context,
-        dataSourceId: input.dataSourceId,
-        name: dataset.name,
-        displayName: dataset.displayName,
-        description: dataset.description,
-        rows: dataset.rows,
-        rowCount: dataset.rowCount,
-        columns: dataset.columns,
-        owner: input.owner,
-      })
-    );
-  }
-  return persisted;
+  return input.datasets.map((dataset) =>
+    buildConnectorDatasetSnapshot({
+      name: dataset.name,
+      displayName: dataset.displayName,
+      description: dataset.description,
+      rows: dataset.rows,
+      rowCount: dataset.rowCount,
+      columns: dataset.columns,
+      owner: input.owner,
+    })
+  );
 }
 
 async function updateScopeWarning(input: {
@@ -635,6 +662,8 @@ export async function connectExternalDataSource(
   const parsed = externalConnectorInputSchema.parse(input) as ExternalConnectorInput;
   const context = await getAuthenticatedContext(parsed.workspaceId, "admin");
   const definition = externalConnectorDefinitions[parsed.type];
+  const redactedSummary = definition.redactedSummary(parsed);
+  const encryptedPayload = encryptCredentialPayload(toStoredExternalConnectorConfig(parsed));
   const connector = definition.createConnector(parsed);
   const connection = await connector.testConnection();
   if (!connection.ok) {
@@ -643,6 +672,10 @@ export async function connectExternalDataSource(
 
   const datasets = await connector.discoverDatasets();
   const warnings = getConnectorWarnings(connector);
+  const datasetSnapshots = buildDiscoveredDatasetSnapshots({
+    datasets,
+    owner: definition.provider,
+  });
   const totalRows = datasets.reduce(
     (total, dataset) => total + (dataset.rowCount ?? dataset.rows.length),
     0
@@ -666,7 +699,7 @@ export async function connectExternalDataSource(
     nextSyncAt: null,
     metadata: {
       tags: [parsed.type, "external", "metadata"],
-      redactedSummary: definition.redactedSummary(parsed),
+      redactedSummary,
     },
   });
 
@@ -674,15 +707,14 @@ export async function connectExternalDataSource(
     await context.repository.upsertDataSourceCredential({
       workspaceId: context.workspaceId,
       dataSourceId: dataSource.id,
-      encryptedPayload: encryptCredentialPayload(toStoredExternalConnectorConfig(parsed)),
-      redactedSummary: definition.redactedSummary(parsed),
+      encryptedPayload,
+      redactedSummary,
       createdBy: context.profileId,
     });
-    await persistDiscoveredDatasets({
-      context,
+    await context.repository.replaceExternalDatasetsForSource({
+      workspaceId: context.workspaceId,
       dataSourceId: dataSource.id,
-      datasets,
-      owner: definition.provider,
+      datasets: datasetSnapshots,
     });
     await updateScopeWarning({
       repository: context.repository,
@@ -723,11 +755,15 @@ export async function connectExternalDataSource(
       },
     };
   } catch (error) {
-    await context.repository.updateDataSource(dataSource.id, {
-      status: "error",
-      sync_status: "attention",
-      health_score: 0,
-    });
+    try {
+      await context.repository.deleteDataSource(dataSource.id);
+    } catch {
+      await context.repository.updateDataSource(dataSource.id, {
+        status: "error",
+        sync_status: "attention",
+        health_score: 0,
+      });
+    }
     throw error;
   }
 }
@@ -771,20 +807,19 @@ async function syncExternalDataSource(
 
     const datasets = await connector.discoverDatasets();
     const warnings = getConnectorWarnings(connector);
+    const datasetSnapshots = buildDiscoveredDatasetSnapshots({
+      datasets,
+      owner: definition.provider,
+    });
     const totalRows = datasets.reduce(
       (total, dataset) => total + (dataset.rowCount ?? dataset.rows.length),
       0
     );
 
-    await context.repository.replaceDatasetsForSource({
+    await context.repository.replaceExternalDatasetsForSource({
       workspaceId: context.workspaceId,
       dataSourceId: source.id,
-    });
-    await persistDiscoveredDatasets({
-      context,
-      dataSourceId: source.id,
-      datasets,
-      owner: definition.provider,
+      datasets: datasetSnapshots,
     });
     await updateScopeWarning({
       repository: context.repository,

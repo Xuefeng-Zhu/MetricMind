@@ -7,9 +7,10 @@ const repositoryMock = vi.hoisted(() => ({
   listPageData: vi.fn(),
   createDataSource: vi.fn(),
   updateDataSource: vi.fn(),
+  deleteDataSource: vi.fn(),
   upsertDataSourceCredential: vi.fn(),
   getDataSourceCredential: vi.fn(),
-  replaceDatasetsForSource: vi.fn(),
+  replaceExternalDatasetsForSource: vi.fn(),
   createUploadedFile: vi.fn(),
   createDataset: vi.fn(),
   createDatasetColumns: vi.fn(),
@@ -64,6 +65,7 @@ import {
   testExternalDataSource,
   uploadCsvDataset,
 } from "./service";
+import { encryptCredentialPayload } from "./credential-crypto";
 
 vi.mock("./connectors/external-registry", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./connectors/external-registry")>();
@@ -151,8 +153,9 @@ describe("data sources service", () => {
     });
     repositoryMock.createDataSource.mockResolvedValue(sourceRow());
     repositoryMock.updateDataSource.mockResolvedValue(sourceRow());
+    repositoryMock.deleteDataSource.mockResolvedValue(undefined);
     repositoryMock.upsertDataSourceCredential.mockResolvedValue({ id: "credential-1" });
-    repositoryMock.replaceDatasetsForSource.mockResolvedValue(undefined);
+    repositoryMock.replaceExternalDatasetsForSource.mockResolvedValue(undefined);
     repositoryMock.createUploadedFile.mockResolvedValue({ id: "file-1" });
     repositoryMock.createDataset.mockResolvedValue({
       id: datasetId,
@@ -350,13 +353,81 @@ describe("data sources service", () => {
       host: "db.example.com",
       username: "reader",
     });
-    expect(repositoryMock.createDataset).toHaveBeenCalledWith(
-      expect.objectContaining({ name: "customers", rowCount: 100 })
+    expect(repositoryMock.replaceExternalDatasetsForSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId,
+        dataSourceId,
+        datasets: [
+          expect.objectContaining({
+            name: "customers",
+            rowCount: 100,
+            columns: [expect.objectContaining({ name: "id" })],
+            rows: [{ rowIndex: 0, data: { id: 1 } }, { rowIndex: 1, data: { id: 2 } }],
+          }),
+        ],
+      })
     );
     expect(repositoryMock.insertAuditEvent).toHaveBeenCalledWith(
       expect.objectContaining({ action: "datasource.connected" })
     );
     expect(result.pageData.workspaceId).toBe(workspaceId);
+  });
+
+  it("validates external credential encryption before creating a source", async () => {
+    delete process.env.DATA_SOURCE_CREDENTIALS_KEY;
+
+    await expect(
+      connectExternalDataSource({
+        type: "postgres",
+        workspaceId,
+        name: "Analytics Postgres",
+        host: "db.example.com",
+        port: 5432,
+        database: "analytics",
+        schema: "public",
+        username: "reader",
+        password: "secret-password",
+        sslMode: "require",
+      })
+    ).rejects.toThrow("DATA_SOURCE_CREDENTIALS_KEY");
+
+    expect(repositoryMock.createDataSource).not.toHaveBeenCalled();
+    expect(repositoryMock.upsertDataSourceCredential).not.toHaveBeenCalled();
+  });
+
+  it("syncs external metadata with one repository-level replacement", async () => {
+    repositoryMock.getDataSource.mockResolvedValue({ ...sourceRow(), type: "postgres" });
+    repositoryMock.getDataSourceCredential.mockResolvedValue({
+      encrypted_payload: encryptCredentialPayload({
+        type: "postgres",
+        workspaceId,
+        name: "Analytics Postgres",
+        host: "db.example.com",
+        port: 5432,
+        database: "analytics",
+        schema: "public",
+        username: "reader",
+        password: "secret-password",
+        sslMode: "require",
+      }),
+    });
+
+    await syncDataSource({ workspaceId, dataSourceId });
+
+    expect(repositoryMock.replaceExternalDatasetsForSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId,
+        dataSourceId,
+        datasets: [
+          expect.objectContaining({
+            name: "customers",
+            rowCount: 100,
+            profile: expect.objectContaining({ rowCount: 2 }),
+          }),
+        ],
+      })
+    );
+    expect(repositoryMock.createDataset).not.toHaveBeenCalled();
   });
 
   it("creates a semantic model from a dataset for analyst-plus users", async () => {

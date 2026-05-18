@@ -119,6 +119,25 @@ interface IssueRow {
   created_at: string;
 }
 
+export interface ExternalDatasetMetadataSnapshot {
+  name: string;
+  displayName: string;
+  description: string;
+  rowCount: number;
+  columnCount: number;
+  primaryKey: string | null;
+  status: MetricMindDataset["status"];
+  qualityScore: number;
+  semanticCoverage: number;
+  piiColumnCount: number;
+  owner: string;
+  sampleQuestion: string;
+  columns: InferredColumn[];
+  rows: NormalizedDatasetRow[];
+  profile: DatasetProfile;
+  suggestions: SemanticSuggestion[];
+}
+
 interface SyncRunRow {
   id: string;
   data_source_id: string;
@@ -163,6 +182,7 @@ export interface DataSourcesRepository {
   }>;
   createDataSource(input: CreateDataSourceInput): Promise<DataSourceRow>;
   updateDataSource(id: string, patch: Partial<DataSourceRow>): Promise<DataSourceRow>;
+  deleteDataSource(id: string): Promise<void>;
   upsertDataSourceCredential(input: {
     workspaceId: string;
     dataSourceId: string;
@@ -174,9 +194,10 @@ export interface DataSourcesRepository {
     workspaceId: string,
     dataSourceId: string
   ): Promise<CredentialRow>;
-  replaceDatasetsForSource(input: {
+  replaceExternalDatasetsForSource(input: {
     workspaceId: string;
     dataSourceId: string;
+    datasets: ExternalDatasetMetadataSnapshot[];
   }): Promise<void>;
   createUploadedFile(input: {
     workspaceId: string;
@@ -631,6 +652,11 @@ export function createDataSourcesRepository(
       return data as DataSourceRow;
     },
 
+    async deleteDataSource(id) {
+      const { error } = await insforge.from("data_sources").delete().eq("id", id);
+      assertNoError(error, "Failed to delete data source");
+    },
+
     async upsertDataSourceCredential(input) {
       const existingResult = await insforge
         .from("data_source_credentials")
@@ -684,14 +710,14 @@ export function createDataSourcesRepository(
       return data as CredentialRow;
     },
 
-    async replaceDatasetsForSource(input) {
-      const { error } = await insforge
-        .from("datasets")
-        .delete()
-        .eq("workspace_id", input.workspaceId)
-        .eq("data_source_id", input.dataSourceId);
+    async replaceExternalDatasetsForSource(input) {
+      const { error } = await insforge.rpc("replace_external_data_source_metadata", {
+        p_workspace_id: input.workspaceId,
+        p_data_source_id: input.dataSourceId,
+        p_datasets: input.datasets,
+      });
 
-      assertNoError(error, "Failed to replace data source datasets");
+      assertNoError(error, "Failed to replace external data source metadata");
     },
 
     async createUploadedFile(input) {
