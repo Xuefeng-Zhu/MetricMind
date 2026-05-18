@@ -1,10 +1,11 @@
 import { InsForgeDatabaseClient } from "@/lib/insforge/types";
+import type { DataSourceKind } from "./types";
 
 export interface DataSource {
   id: string;
   workspace_id: string;
   name: string;
-  type: "csv" | "demo";
+  type: DataSourceKind;
   status: "processing" | "ready" | "error";
   row_count: number | null;
   file_size_bytes: number | null;

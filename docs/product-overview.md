@@ -52,10 +52,11 @@ The Data Sources page supports:
 - CSV upload through `/api/data-sources/upload-csv`.
 - Server-side CSV parse, schema inference, row normalization, dataset profiling, and semantic suggestions.
 - Demo SaaS source creation through server actions.
-- Manual metadata sync records for CSV and demo sources.
-- Creating a semantic model from a dataset.
+- Live metadata connectors for Snowflake, BigQuery, Postgres, and MotherDuck through admin-only server actions.
+- Manual metadata sync records for CSV/demo sources and metadata refresh for external connectors.
+- Creating a semantic model from CSV/demo datasets.
 
-The connector gallery exposes only currently implemented CSV upload and demo dataset creation. Do not document warehouse or SaaS connectors as implemented integrations until backend connectors exist.
+External connector v1 profiles schema and sample rows only; it does not replicate full external tables or enable semantic model creation until ingestion or live query execution is added.
 
 ### Semantic Layer
 
@@ -99,7 +100,7 @@ Dashboard services support:
 - `/demo` is not a live AI or database-backed flow.
 - Browser E2E automation is not checked in.
 - There is no release/deploy pipeline in the repository.
-- Data source credentials have schema support, but broad external connector credential flows are not implemented.
+- External data source credentials are stored server-side as app-encrypted payloads using `DATA_SOURCE_CREDENTIALS_KEY`; only redacted summaries are kept in source metadata.
 - AI provider secrets are stored through `/api/ai-config`; TODO: verify encryption behavior before claiming production-grade key encryption.
 
 ## Related Docs

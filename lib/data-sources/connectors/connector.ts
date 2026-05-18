@@ -5,6 +5,7 @@ export interface ConnectorDataset {
   displayName: string;
   description: string;
   primaryKey: string | null;
+  rowCount?: number;
   columns: InferredColumn[];
   rows: NormalizedDatasetRow[];
 }
@@ -21,4 +22,5 @@ export interface DataSourceConnector {
   discoverDatasets(): Promise<ConnectorDataset[]>;
   discoverSchema(datasetName: string): Promise<InferredColumn[]>;
   previewRows(datasetName: string, limit?: number): Promise<NormalizedDatasetRow[]>;
+  getDiscoveryWarnings?(): string[];
 }

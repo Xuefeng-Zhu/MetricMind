@@ -3,15 +3,28 @@
 import { revalidatePath } from "next/cache";
 
 import {
+  connectExternalDataSource,
   createDemoDataSource,
   createSemanticModelFromDataset,
   syncDataSource,
+  testExternalDataSource,
   toActionResult,
   updateDatasetColumn,
 } from "@/lib/data-sources/service";
+import type { ExternalConnectorInput } from "@/lib/data-sources/types";
 
 export async function createDemoDataSourceAction(input: { workspaceId: string }) {
   const result = await toActionResult(() => createDemoDataSource(input));
+  if (result.ok) revalidatePath("/app/data-sources");
+  return result;
+}
+
+export async function testExternalDataSourceAction(input: ExternalConnectorInput) {
+  return toActionResult(() => testExternalDataSource(input));
+}
+
+export async function connectExternalDataSourceAction(input: ExternalConnectorInput) {
+  const result = await toActionResult(() => connectExternalDataSource(input));
   if (result.ok) revalidatePath("/app/data-sources");
   return result;
 }

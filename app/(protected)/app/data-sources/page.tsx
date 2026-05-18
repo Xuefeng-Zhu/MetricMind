@@ -3,7 +3,9 @@ import { getDataSourcesPageData } from "@/lib/data-sources/service";
 import {
   createDemoDataSourceAction,
   createSemanticModelFromDatasetAction,
+  connectExternalDataSourceAction,
   syncDataSourceAction,
+  testExternalDataSourceAction,
 } from "./actions";
 
 export default async function DataSourcesRoute() {
@@ -13,6 +15,8 @@ export default async function DataSourcesRoute() {
     <DataSourcesPage
       initialData={initialData}
       createDemoDataSourceAction={createDemoDataSourceAction}
+      testExternalDataSourceAction={testExternalDataSourceAction}
+      connectExternalDataSourceAction={connectExternalDataSourceAction}
       syncDataSourceAction={syncDataSourceAction}
       createSemanticModelFromDatasetAction={createSemanticModelFromDatasetAction}
     />

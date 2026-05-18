@@ -24,6 +24,7 @@ import type {
   ActionResult,
   DataSourcesPageData,
   DatasetColumn,
+  MetricMindDataSource,
   MetricMindDataset,
 } from "@/lib/data-sources/types";
 import { ColumnSchemaTable } from "./column-schema-table";
@@ -69,8 +70,12 @@ function hasPageData(value: unknown): value is PageDataActionPayload & {
   );
 }
 
-function SourceIcon({ type }: { type: "csv" | "demo" }) {
-  const Icon = type === "demo" ? BarChart3 : FileText;
+function supportsSemanticModel(type: MetricMindDataSource["type"]) {
+  return type === "csv" || type === "demo";
+}
+
+function SourceIcon({ type }: { type: MetricMindDataSource["type"] }) {
+  const Icon = type === "demo" ? BarChart3 : type === "csv" ? FileText : Database;
   return <Icon className="h-8 w-8" aria-hidden="true" />;
 }
 
@@ -111,11 +116,13 @@ function DatasetRows({
   sourceId,
   onCreateSemanticModel,
   creatingSemanticModel,
+  semanticModelSupported,
 }: {
   datasets: MetricMindDataset[];
   sourceId: string;
   onCreateSemanticModel: (dataset: MetricMindDataset) => void;
   creatingSemanticModel: boolean;
+  semanticModelSupported: boolean;
 }) {
   if (datasets.length === 0) {
     return (
@@ -167,7 +174,7 @@ function DatasetRows({
                   </Link>
                   <button
                     type="button"
-                    disabled={creatingSemanticModel}
+                    disabled={creatingSemanticModel || !semanticModelSupported}
                     onClick={() => onCreateSemanticModel(dataset)}
                     className="text-sm font-semibold text-[#334155] hover:text-[#2563EB] disabled:opacity-50"
                   >
@@ -188,11 +195,13 @@ function SchemaPreview({
   columns,
   onCreateSemanticModel,
   creatingSemanticModel,
+  semanticModelSupported,
 }: {
   dataset: MetricMindDataset | null;
   columns: DatasetColumn[];
   onCreateSemanticModel: () => void;
   creatingSemanticModel: boolean;
+  semanticModelSupported: boolean;
 }) {
   if (!dataset) {
     return (
@@ -221,7 +230,7 @@ function SchemaPreview({
         <Button
           type="button"
           onClick={onCreateSemanticModel}
-          disabled={creatingSemanticModel}
+          disabled={creatingSemanticModel || !semanticModelSupported}
           className="gap-2"
         >
           <ShieldCheck className="h-4 w-4" aria-hidden="true" />
@@ -287,6 +296,7 @@ export function DataSourceDetailPage({
   }
 
   const selectedSource = source;
+  const semanticModelSupported = supportsSemanticModel(selectedSource.type);
 
   async function handleSyncNow() {
     if (!pageData.workspaceId) {
@@ -320,6 +330,15 @@ export function DataSourceDetailPage({
   }
 
   async function handleCreateSemanticModel(dataset = primaryDataset) {
+    if (!semanticModelSupported) {
+      toast({
+        title: "Semantic model unavailable",
+        description:
+          "External connectors currently support live metadata and samples. Full semantic modeling requires ingestion or live query execution.",
+      });
+      return;
+    }
+
     if (!dataset || !pageData.workspaceId) {
       toast({
         title: "Dataset required",
@@ -393,7 +412,7 @@ export function DataSourceDetailPage({
             <Button
               type="button"
               onClick={() => handleCreateSemanticModel()}
-              disabled={!primaryDataset || creatingSemanticModel}
+              disabled={!primaryDataset || creatingSemanticModel || !semanticModelSupported}
               className="gap-2"
             >
               <ShieldCheck className="h-4 w-4" aria-hidden="true" />
@@ -489,6 +508,7 @@ export function DataSourceDetailPage({
               columns={primaryColumns}
               onCreateSemanticModel={() => handleCreateSemanticModel()}
               creatingSemanticModel={creatingSemanticModel}
+              semanticModelSupported={semanticModelSupported}
             />
           </div>
 
@@ -501,6 +521,7 @@ export function DataSourceDetailPage({
               sourceId={selectedSource.id}
               onCreateSemanticModel={handleCreateSemanticModel}
               creatingSemanticModel={creatingSemanticModel}
+              semanticModelSupported={semanticModelSupported}
             />
           </section>
         </TabsContent>
@@ -511,6 +532,7 @@ export function DataSourceDetailPage({
             sourceId={selectedSource.id}
             onCreateSemanticModel={handleCreateSemanticModel}
             creatingSemanticModel={creatingSemanticModel}
+            semanticModelSupported={semanticModelSupported}
           />
         </TabsContent>
 
@@ -520,6 +542,7 @@ export function DataSourceDetailPage({
             columns={primaryColumns}
             onCreateSemanticModel={() => handleCreateSemanticModel()}
             creatingSemanticModel={creatingSemanticModel}
+            semanticModelSupported={semanticModelSupported}
           />
         </TabsContent>
 
